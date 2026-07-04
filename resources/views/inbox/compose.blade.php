@@ -48,7 +48,12 @@
 
         <div>
             <label class="block text-sm font-medium mb-1">Attachments</label>
-            <input type="file" name="attachments[]" multiple class="w-full border rounded px-3 py-2 text-sm">
+            <label class="flex items-center gap-2 cursor-pointer w-fit px-3 py-2 rounded border text-sm hover:bg-gray-50">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                Attach files
+                <input type="file" name="attachments[]" id="attachment-input" multiple class="sr-only">
+            </label>
+            <ul id="attachment-list" class="mt-2 space-y-1"></ul>
         </div>
 
         <div class="flex items-center gap-2">
@@ -174,6 +179,43 @@
 
             setupAutocomplete('field-to');
             setupAutocomplete('field-cc');
+
+            // --- Attachment file list with remove ---
+            (function () {
+                const input = document.getElementById('attachment-input');
+                const list = document.getElementById('attachment-list');
+                let files = [];
+
+                function fmt(bytes) {
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                    return (bytes / 1048576).toFixed(1) + ' MB';
+                }
+
+                function render() {
+                    list.innerHTML = '';
+                    const dt = new DataTransfer();
+                    files.forEach((file, i) => {
+                        dt.items.add(file);
+                        const li = document.createElement('li');
+                        li.className = 'flex items-center gap-2 text-sm text-gray-700';
+                        li.innerHTML = `<span class="truncate max-w-xs">${file.name}</span><span class="text-gray-400 flex-shrink-0">${fmt(file.size)}</span>`;
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'text-gray-400 hover:text-red-500 flex-shrink-0';
+                        btn.innerHTML = '&times;';
+                        btn.addEventListener('click', () => { files.splice(i, 1); render(); });
+                        li.appendChild(btn);
+                        list.appendChild(li);
+                    });
+                    input.files = dt.files;
+                }
+
+                input.addEventListener('change', () => {
+                    files = [...files, ...Array.from(input.files)];
+                    render();
+                });
+            })();
         })();
     </script>
 @endsection
