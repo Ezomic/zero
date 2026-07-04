@@ -69,23 +69,44 @@
     @auth
         <script>
             (function () {
+                const INTERVAL_ACTIVE = 30_000;
+                const INTERVAL_BACKGROUND = 5 * 60_000;
+                let timer = null;
+
+                function updateBadge(count) {
+                    const badge = document.getElementById('unread-badge');
+                    if (!badge) return;
+                    if (count > 0) {
+                        badge.textContent = count > 99 ? '99+' : count;
+                        badge.classList.remove('hidden');
+                        document.title = document.title.replace(/^\(\d+\+?\) /, '');
+                        document.title = '(' + (count > 99 ? '99+' : count) + ') ' + document.title;
+                    } else {
+                        badge.classList.add('hidden');
+                        document.title = document.title.replace(/^\(\d+\+?\) /, '');
+                    }
+                }
+
                 function poll() {
                     fetch('{{ route('inbox.unreadCount') }}', { headers: { 'Accept': 'application/json' } })
                         .then((r) => r.json())
-                        .then((data) => {
-                            const badge = document.getElementById('unread-badge');
-                            if (!badge) return;
-                            if (data.unread > 0) {
-                                badge.textContent = data.unread > 99 ? '99+' : data.unread;
-                                badge.classList.remove('hidden');
-                            } else {
-                                badge.classList.add('hidden');
-                            }
-                        })
+                        .then((data) => updateBadge(data.unread ?? 0))
                         .catch(() => {});
                 }
+
+                function schedule() {
+                    clearInterval(timer);
+                    const interval = document.hidden ? INTERVAL_BACKGROUND : INTERVAL_ACTIVE;
+                    timer = setInterval(poll, interval);
+                }
+
                 poll();
-                setInterval(poll, 30000);
+                schedule();
+
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) poll();
+                    schedule();
+                });
             })();
         </script>
     @endauth
