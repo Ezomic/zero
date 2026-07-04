@@ -219,8 +219,9 @@ class InboxController extends Controller
             ->whereIn('mail_account_id', $accountIds)
             ->get();
 
-        $messages = $selected
-            ->flatMap(fn (Email $email) => $this->threadEmails($email)->get())
+        $messages = Email::whereIn('mail_account_id', $accountIds)
+            ->whereIn('thread_id', $selected->pluck('thread_id'))
+            ->get()
             ->unique('id');
 
         foreach ($messages as $message) {
