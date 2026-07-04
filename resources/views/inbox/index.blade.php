@@ -52,7 +52,7 @@
 
         <div class="bg-white rounded border divide-y">
             @forelse ($emails as $email)
-                <div class="flex items-center gap-3 p-4 hover:bg-gray-50 {{ $email->is_read ? '' : 'bg-blue-50' }}">
+                <div class="email-row flex items-center gap-3 p-4 hover:bg-gray-50 focus-within:ring-1 focus-within:ring-blue-300 {{ $email->is_read ? '' : 'bg-blue-50' }}">
                     <input type="checkbox" name="ids[]" value="{{ $email->id }}" class="row-checkbox">
                     <a href="{{ route('inbox.show', $email) }}" class="flex-1 min-w-0 block">
                         <div class="flex justify-between text-sm">
@@ -73,6 +73,13 @@
                             {{ $email->mailAccount->email_address }}
                         </div>
                     </a>
+                    {{-- Hidden per-row action forms for keyboard shortcuts --}}
+                    <div class="hidden">
+                        <form method="POST" action="{{ route('inbox.archive', $email) }}" data-action="archive">@csrf</form>
+                        <form method="POST" action="{{ route('inbox.markUnread', $email) }}" data-action="unread">@csrf</form>
+                        <form method="POST" action="{{ route('inbox.destroy', $email) }}" data-action="delete">@csrf @method('DELETE')</form>
+                        <a href="{{ route('compose.reply', $email) }}" data-action="reply"></a>
+                    </div>
                 </div>
             @empty
                 <p class="p-4 text-gray-500">No emails yet. Connect an account and click "Sync now".</p>

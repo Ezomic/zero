@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Mail')</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>.email-row.focused { box-shadow: inset 3px 0 0 #2563EB; background-color: #EFF6FF; }</style>
 </head>
 <body class="bg-gray-50 text-gray-900">
     <div class="min-h-screen flex">
@@ -44,10 +45,13 @@
                 @endif
             @endauth
 
-            <form method="POST" action="{{ route('logout') }}" class="mt-auto">
-                @csrf
-                <button class="px-3 py-2 rounded hover:bg-gray-100 w-full text-left text-sm text-gray-500">Log out</button>
-            </form>
+            <div class="mt-auto flex flex-col gap-1">
+                <button onclick="document.getElementById('kb-help').classList.toggle('hidden')" class="px-3 py-2 rounded hover:bg-gray-100 w-full text-left text-sm text-gray-400">⌨ Shortcuts</button>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button class="px-3 py-2 rounded hover:bg-gray-100 w-full text-left text-sm text-gray-500">Log out</button>
+                </form>
+            </div>
         </aside>
 
         <main class="flex-1 p-6">
@@ -84,6 +88,145 @@
                 setInterval(poll, 30000);
             })();
         </script>
+    @endauth
+
+    @auth
+        <script>
+            (function () {
+                const routes = {
+                    inbox: '{{ route('inbox.index') }}',
+                    compose: '{{ route('compose.create') }}',
+                    sent: '{{ route('inbox.index', ['folder' => 'SENT']) }}',
+                    drafts: '{{ route('drafts.index') }}',
+                    triage: '{{ route('triage.index') }}',
+                    accounts: '{{ route('accounts.index') }}',
+                };
+
+                function inInput() {
+                    const tag = document.activeElement?.tagName;
+                    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable;
+                }
+
+                document.addEventListener('keydown', function (e) {
+                    if (e.metaKey || e.ctrlKey || e.altKey || inInput()) return;
+
+                    // ? → show shortcut help overlay
+                    if (e.key === '?') {
+                        const overlay = document.getElementById('kb-help');
+                        if (overlay) overlay.classList.toggle('hidden');
+                        return;
+                    }
+
+                    // g then second key — goto shortcuts
+                    if (e.key === 'g') {
+                        const listener = function (e2) {
+                            document.removeEventListener('keydown', listener);
+                            if (inInput()) return;
+                            const dest = { i: routes.inbox, s: routes.sent, d: routes.drafts, t: routes.triage, c: routes.compose, a: routes.accounts }[e2.key];
+                            if (dest) location.href = dest;
+                        };
+                        document.addEventListener('keydown', listener, { once: true });
+                        return;
+                    }
+
+                    const link = document.querySelector('.email-row.focused a[data-href]');
+                    const focused = document.querySelector('.email-row.focused');
+
+                    const rows = Array.from(document.querySelectorAll('.email-row'));
+                    const idx = rows.indexOf(focused);
+
+                    switch (e.key) {
+                        case 'j': {
+                            const next = rows[Math.min(idx + 1, rows.length - 1)];
+                            rows.forEach((r) => r.classList.remove('focused'));
+                            next?.classList.add('focused');
+                            next?.scrollIntoView({ block: 'nearest' });
+                            break;
+                        }
+                        case 'k': {
+                            const prev = rows[Math.max(idx - 1, 0)];
+                            rows.forEach((r) => r.classList.remove('focused'));
+                            prev?.classList.add('focused');
+                            prev?.scrollIntoView({ block: 'nearest' });
+                            break;
+                        }
+                        case 'Enter':
+                        case 'o': {
+                            const href = focused?.querySelector('a')?.href;
+                            if (href) location.href = href;
+                            break;
+                        }
+                        case 'c':
+                            location.href = routes.compose;
+                            break;
+                        case '/':
+                            e.preventDefault();
+                            document.querySelector('input[name="q"]')?.focus();
+                            break;
+                        case 'Escape': {
+                            document.getElementById('kb-help')?.classList.add('hidden');
+                            document.querySelector('input[name="q"]')?.blur();
+                            break;
+                        }
+                        case 'e': {
+                            const form = focused?.querySelector('form[data-action="archive"]');
+                            if (form) form.requestSubmit();
+                            break;
+                        }
+                        case 'u': {
+                            const form = focused?.querySelector('form[data-action="unread"]');
+                            if (form) form.requestSubmit();
+                            break;
+                        }
+                        case '#': {
+                            if (confirm('Delete this conversation?')) {
+                                focused?.querySelector('form[data-action="delete"]')?.requestSubmit();
+                            }
+                            break;
+                        }
+                        case 'r': {
+                            const href = focused?.querySelector('a[data-action="reply"]')?.href;
+                            if (href) location.href = href;
+                            break;
+                        }
+                    }
+                });
+            })();
+        </script>
+
+        {{-- Keyboard shortcut help overlay --}}
+        <div id="kb-help" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onclick="this.classList.add('hidden')">
+            <div class="bg-white rounded-lg shadow-xl p-6 w-80" onclick="event.stopPropagation()">
+                <h2 class="font-semibold mb-4">Keyboard shortcuts</h2>
+                <table class="w-full text-sm">
+                    <tbody class="divide-y">
+                        @foreach ([
+                            ['j / k', 'Move between conversations'],
+                            ['Enter / o', 'Open focused conversation'],
+                            ['e', 'Archive focused conversation'],
+                            ['u', 'Mark focused conversation unread'],
+                            ['#', 'Delete focused conversation'],
+                            ['r', 'Reply to focused conversation'],
+                            ['c', 'Compose new message'],
+                            ['/', 'Focus search'],
+                            ['gi', 'Go to Inbox'],
+                            ['gs', 'Go to Sent'],
+                            ['gd', 'Go to Drafts'],
+                            ['gt', 'Go to Process Inbox (triage)'],
+                            ['gc', 'Go to Compose'],
+                            ['ga', 'Go to Accounts'],
+                            ['?', 'Toggle this help'],
+                        ] as [$key, $desc])
+                            <tr class="py-1">
+                                <td class="py-1 pr-4 font-mono text-xs bg-gray-100 rounded px-1 text-center w-20">{{ $key }}</td>
+                                <td class="py-1 pl-3 text-gray-600">{{ $desc }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                <button class="mt-4 text-xs text-gray-400 hover:text-gray-600" onclick="document.getElementById('kb-help').classList.add('hidden')">Close</button>
+            </div>
+        </div>
     @endauth
 
     @yield('scripts')
