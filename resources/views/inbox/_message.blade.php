@@ -11,9 +11,17 @@
         via {{ $message->mailAccount->email_address }} &middot; {{ \App\Models\MailFolder::displayName($message->folder) }}
     </div>
 
-    <div class="prose max-w-none">
-        {!! $message->body_html ?: nl2br(e($message->body_text)) !!}
-    </div>
+    @if ($message->body_html)
+        <iframe
+            srcdoc="{{ $message->body_html }}"
+            sandbox="allow-same-origin"
+            referrerpolicy="no-referrer"
+            class="w-full border-0 min-h-[120px]"
+            onload="this.style.height = (this.contentDocument.documentElement.scrollHeight + 16) + 'px'"
+        ></iframe>
+    @elseif ($message->body_text)
+        <div class="prose max-w-none whitespace-pre-wrap font-sans text-sm">{{ $message->body_text }}</div>
+    @endif
 
     @if ($message->attachments->isNotEmpty())
         <div class="mt-6 border-t pt-4">
