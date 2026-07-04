@@ -7,12 +7,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $email_address
+ * @property string|null $display_name
+ * @property string $provider
+ * @property string $sync_status
+ * @property bool $is_active
+ */
 class MailAccount extends Model
 {
     use HasFactory;
 
     public const PROVIDER_GMAIL = 'gmail';
+
     public const PROVIDER_OUTLOOK = 'outlook';
+
     public const PROVIDER_IMAP = 'imap';
 
     /** Palette used to auto-assign a distinguishing color per account. */
@@ -42,6 +53,7 @@ class MailAccount extends Model
         'oauth_expires_at',
         'last_synced_at',
         'sync_status',
+        'sync_status_since',
         'sync_error',
         'is_active',
     ];
@@ -55,6 +67,7 @@ class MailAccount extends Model
         'oauth_refresh_token' => 'encrypted',
         'oauth_expires_at' => 'datetime',
         'last_synced_at' => 'datetime',
+        'sync_status_since' => 'datetime',
         'is_active' => 'boolean',
     ];
 

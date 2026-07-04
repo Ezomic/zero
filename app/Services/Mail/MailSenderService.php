@@ -6,9 +6,10 @@ use App\Models\MailAccount;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
-use Symfony\Component\Mailer\Transport\Dsn;
-use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
+use Webklex\PHPIMAP\ClientManager;
 
 /**
  * Sends a message from a given MailAccount.
@@ -36,6 +37,9 @@ class MailSenderService
         };
     }
 
+    /**
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     */
     protected function sendViaGmailApi(MailAccount $account, array $message): void
     {
         $accessToken = $this->tokenRefresher->freshAccessToken($account);
@@ -53,6 +57,9 @@ class MailSenderService
         }
     }
 
+    /**
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     */
     protected function sendViaGraphApi(MailAccount $account, array $message): void
     {
         $accessToken = $this->tokenRefresher->freshAccessToken($account);
@@ -76,7 +83,7 @@ class MailSenderService
                 '@odata.type' => '#microsoft.graph.fileAttachment',
                 'name' => $file->getClientOriginalName(),
                 'contentType' => $file->getMimeType(),
-                'contentBytes' => base64_encode($file->get()),
+                'contentBytes' => base64_encode((string) $file->get()),
             ])
             ->all();
 
@@ -100,6 +107,9 @@ class MailSenderService
         }
     }
 
+    /**
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     */
     protected function sendViaSmtp(MailAccount $account, array $message): void
     {
         $dsn = sprintf(
@@ -110,15 +120,55 @@ class MailSenderService
             $account->smtp_port,
         );
 
-        $transport = \Symfony\Component\Mailer\Transport::fromDsn($dsn);
-        $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+        $transport = Transport::fromDsn($dsn);
+        $mailer = new Mailer($transport);
 
-        $mailer->send($this->buildMimeMessage($account, $message));
+        $mime = $this->buildMimeMessage($account, $message);
+        $mailer->send($mime);
+
+        $this->appendToSentFolder($account, $mime->toString());
     }
 
+    protected function appendToSentFolder(MailAccount $account, string $rawMessage): void
+    {
+        try {
+            $cm = new ClientManager;
+            $client = $cm->make([
+                'host' => $account->imap_host,
+                'port' => $account->imap_port,
+                'encryption' => $account->imap_encryption,
+                'validate_cert' => true,
+                'username' => $account->imap_username,
+                'password' => $account->imap_password,
+                'timeout' => 30,
+            ]);
+            $client->connect();
+
+            // Find the Sent folder — providers name it differently.
+            $sentPath = null;
+            foreach ($client->getFolders(false) as $folder) {
+                if (str_contains(strtolower($folder->name), 'sent')) {
+                    $sentPath = $folder->full_name ?? $folder->path;
+                    break;
+                }
+            }
+
+            if ($sentPath) {
+                $client->appendMessage($rawMessage, $sentPath, ['Seen']);
+            }
+        } catch (\Throwable) {
+            // Best-effort — a send that succeeded shouldn't fail because the
+            // IMAP append didn't work. The next sync will eventually pick it up
+            // from the server's Sent folder anyway.
+        }
+    }
+
+    /**
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     */
     protected function buildMimeMessage(MailAccount $account, array $message): Email
     {
-        $email = (new Email())
+        $email = (new Email)
             ->from($account->email_address)
             ->to(...$message['to'])
             ->subject($message['subject'])
@@ -142,12 +192,13 @@ class MailSenderService
 
         /** @var UploadedFile $file */
         foreach ($message['attachments'] ?? [] as $file) {
-            $email->attach($file->get(), $file->getClientOriginalName(), $file->getMimeType());
+            $email->attach((string) $file->get(), $file->getClientOriginalName(), $file->getMimeType());
         }
 
         return $email;
     }
 
+    /** @return list<string> */
     protected function splitReferences(string $references): array
     {
         return preg_split('/\s+/', trim($references), -1, PREG_SPLIT_NO_EMPTY) ?: [];

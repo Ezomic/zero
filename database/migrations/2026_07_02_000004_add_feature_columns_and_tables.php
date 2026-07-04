@@ -55,12 +55,12 @@ return new class extends Migration
                 )
             ");
 
-            DB::statement("
+            DB::statement('
                 CREATE TRIGGER IF NOT EXISTS emails_fts_ai AFTER INSERT ON emails BEGIN
                     INSERT INTO emails_fts(rowid, subject, from_address, body_text)
                     VALUES (new.id, new.subject, new.from_address, new.body_text);
                 END
-            ");
+            ');
 
             DB::statement("
                 CREATE TRIGGER IF NOT EXISTS emails_fts_ad AFTER DELETE ON emails BEGIN
