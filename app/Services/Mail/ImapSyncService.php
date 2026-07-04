@@ -470,7 +470,9 @@ class ImapSyncService
                     sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
                 ))->afterCommit();
 
-                $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+                if (config('features.macos_notifications')) {
+                    $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+                }
             }
 
             $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
