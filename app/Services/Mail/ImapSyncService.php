@@ -389,16 +389,17 @@ class ImapSyncService
 
             if ($serverUidValidity > 0 && $serverUidValidity !== (int) ($folderRecord->uid_validity ?? $serverUidValidity)) {
                 $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
-                $query = $query->all()->limit($limit)->fetchOrderDesc();
+                $messages = $query->all()->limit($limit)->fetchOrderDesc()->get();
             } else {
                 $folderRecord->update(['uid_validity' => $serverUidValidity]);
-                $query = $query->whereUidGreaterOrEqual($folderRecord->last_uid + 1)->fetchOrderDesc();
+                // whereUidGreaterOrEqual() isn't supported by the installed
+                // webklex/php-imap version — getByUidGreaterOrEqual() filters
+                // the folder's UID list client-side instead.
+                $messages = $query->fetchOrderDesc()->getByUidGreaterOrEqual($folderRecord->last_uid + 1);
             }
         } else {
-            $query = $query->all()->limit($limit)->fetchOrderDesc();
+            $messages = $query->all()->limit($limit)->fetchOrderDesc()->get();
         }
-
-        $messages = $query->get();
         $highestUid = $folderRecord->last_uid;
 
         foreach ($messages as $message) {
@@ -468,7 +469,7 @@ class ImapSyncService
                     fromName: $fromName,
                     subject: $subject,
                     sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
-                ))->afterCommit();
+                ));
 
                 if (config('features.macos_notifications')) {
                     $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
