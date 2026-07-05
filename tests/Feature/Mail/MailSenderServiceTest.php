@@ -54,6 +54,7 @@ class MailSenderServiceTest extends TestCase
             $this->assertStringNotContainsString('+', $raw);
             $this->assertStringNotContainsString('/', $raw);
             $this->assertStringNotContainsString('=', $raw);
+
             return true;
         });
     }
@@ -92,6 +93,7 @@ class MailSenderServiceTest extends TestCase
             $this->assertTrue($data['saveToSentItems']);
             $headers = collect($data['message']['internetMessageHeaders'] ?? []);
             $this->assertNotNull($headers->firstWhere('name', 'In-Reply-To'));
+
             return true;
         });
     }

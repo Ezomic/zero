@@ -5,6 +5,7 @@ namespace Tests\Unit\Mail;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 // Subclass that exposes the protected folder-name classifier for unit testing
@@ -34,7 +35,7 @@ class ImapFolderMappingTest extends TestCase
         Mockery::close();
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('aggregateFolderProvider')]
+    #[DataProvider('aggregateFolderProvider')]
     public function test_excludes_gmail_aggregate_folder_names(string $name): void
     {
         $this->assertTrue($this->service->isAggregateName(strtolower($name)));
@@ -56,7 +57,7 @@ class ImapFolderMappingTest extends TestCase
         ];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('canonicalFolderProvider')]
+    #[DataProvider('canonicalFolderProvider')]
     public function test_does_not_exclude_canonical_mailbox_folders(string $name): void
     {
         $this->assertFalse($this->service->isAggregateName(strtolower($name)));

@@ -43,6 +43,7 @@ class MailAccountController extends Controller
             'smtp_password' => ['required', 'string'],
         ]);
 
+        /** @var MailAccount $account */
         $account = auth()->user()->mailAccounts()->create([
             ...$data,
             'provider' => MailAccount::PROVIDER_IMAP,
@@ -128,6 +129,22 @@ class MailAccountController extends Controller
         SyncMailAccountJob::dispatch($account);
 
         return back()->with('status', 'Sync queued.');
+    }
+
+    public function reenable(MailAccount $account): RedirectResponse
+    {
+        $this->authorizeOwnership($account);
+
+        $account->update([
+            'is_active' => true,
+            'sync_status' => 'idle',
+            'sync_status_since' => now(),
+            'sync_error' => null,
+        ]);
+
+        SyncMailAccountJob::dispatch($account);
+
+        return back()->with('status', 'Account re-enabled — sync queued.');
     }
 
     protected function authorizeOwnership(MailAccount $account): void

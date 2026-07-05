@@ -15,6 +15,8 @@ class MailFolder extends Model
         'mail_account_id',
         'local_name',
         'remote_path',
+        'last_uid',
+        'uid_validity',
     ];
 
     public function mailAccount(): BelongsTo

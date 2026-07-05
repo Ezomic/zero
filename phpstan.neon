@@ -1,0 +1,23 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 7
+    paths:
+        - app
+
+    parallel:
+        maximumNumberOfProcesses: 1
+        processTimeout: 300.0
+        minimumNumberOfJobsPerProcess: 1000
+
+    ignoreErrors:
+        - identifier: missingType.generics
+        - identifier: arrayFilter.same
+        - message: '#Call to an undefined method Webklex\\PHPIMAP\\Client::appendMessage\(\)#'
+        - message: '#Call to an undefined method Laravel\\Socialite\\Contracts\\Provider::scopes\(\)#'
+        - message: '#Access to an undefined property Laravel\\Socialite\\Contracts\\User::\$(refreshToken|token)#'
+        - message: '#Call to an undefined method Webklex\\PHPIMAP\\Query\\WhereQuery::whereUidGreaterOrEqual\(\)#'
+        - message: '#Call to an undefined method Illuminate\\Broadcasting\\PendingBroadcast::afterCommit\(\)#'
+        - message: '#Using nullsafe method call on non-nullable type Webklex\\PHPIMAP\\Attribute#'
+        - message: '#Expression on left side of \?\? is not nullable#'
