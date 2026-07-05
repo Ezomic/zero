@@ -16,6 +16,12 @@ class IdleMailboxCommand extends Command
 
     public function handle(OAuthTokenRefresher $tokenRefresher): int
     {
+        if (! config('features.imap_idle')) {
+            $this->warn('IMAP IDLE is disabled (FEATURE_IMAP_IDLE=false). Exiting.');
+
+            return self::SUCCESS;
+        }
+
         $account = MailAccount::findOrFail($this->argument('account'));
 
         if (! $account->is_active) {

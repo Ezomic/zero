@@ -376,7 +376,8 @@ class ImapSyncService
 
     protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
     {
-        $query = $folder->messages()->setFetchBody(false);
+        $query = $folder->messages()->setFetchBody(false)->limit($limit)->fetchOrderDesc();
+        $incremental = false;
 
         if ($folderRecord->last_uid > 0) {
             // Incremental: only fetch messages with a UID higher than the last
@@ -389,16 +390,18 @@ class ImapSyncService
 
             if ($serverUidValidity > 0 && $serverUidValidity !== (int) ($folderRecord->uid_validity ?? $serverUidValidity)) {
                 $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
-                $query = $query->all()->limit($limit)->fetchOrderDesc();
             } else {
                 $folderRecord->update(['uid_validity' => $serverUidValidity]);
-                $query = $query->whereUidGreaterOrEqual($folderRecord->last_uid + 1)->fetchOrderDesc();
+                $incremental = true;
             }
-        } else {
-            $query = $query->all()->limit($limit)->fetchOrderDesc();
         }
 
-        $messages = $query->get();
+        // whereUidGreaterOrEqual() isn't supported by the installed
+        // webklex/php-imap version — getByUidGreaterOrEqual() filters the
+        // folder's UID list client-side instead.
+        $messages = $incremental
+            ? $query->getByUidGreaterOrEqual($folderRecord->last_uid + 1)
+            : $query->all()->get();
         $highestUid = $folderRecord->last_uid;
 
         foreach ($messages as $message) {
@@ -468,9 +471,11 @@ class ImapSyncService
                     fromName: $fromName,
                     subject: $subject,
                     sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
-                ))->afterCommit();
+                ));
 
-                $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+                if (config('features.macos_notifications')) {
+                    $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+                }
             }
 
             $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
