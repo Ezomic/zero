@@ -19,6 +19,38 @@ use Webklex\PHPIMAP\Message;
  * Connects to an account's IMAP server (Gmail, Outlook, or custom) and pulls
  * new messages into the local `emails` table. Safe to run repeatedly —
  * dedupes on (mail_account_id, folder, uid).
+ *
+ * ## Sync strategy overview
+ *
+ * Two complementary paths keep the local database up to date:
+ *
+ * ### Polling (every 5 minutes)
+ * `mail:sync` is dispatched by the scheduler every 5 minutes via `withoutOverlapping()`.
+ * It enqueues a `SyncMailAccountJob` for every active account, which calls
+ * `ImapSyncService::sync()`. Incremental syncs only fetch UIDs above `last_uid`
+ * (stored per folder in `mail_folders`), so they complete in milliseconds for
+ * most runs. The first sync of a new account fetches everything and can be slow
+ * for large mailboxes — that's why `SyncMailAccountJob::$timeout = 1800` (30 min).
+ *
+ * ### IMAP IDLE (real-time push)
+ * `mail:idle {account}` holds a persistent IDLE connection on the account's INBOX.
+ * When the server pushes a notification (new message, flag change, expunge), it
+ * immediately dispatches `SyncMailAccountJob` — no 5-minute wait. launchd runs one
+ * idle process per account and restarts it automatically if it dies (servers drop
+ * IDLE connections after ~30 min, which is the normal case). The polling path acts
+ * as a guaranteed fallback for accounts without an IDLE process (e.g. when adding
+ * a new account before its launchd agent is set up).
+ *
+ * ### Incremental vs full resync
+ * `last_uid = 0` → full fetch (first sync or forced resync via Tinker).
+ * `last_uid > 0` → incremental, fetches only `UID > last_uid`.
+ * If `uid_validity` changes (server recreated the folder), `last_uid` is reset to 0
+ * and a full resync runs automatically.
+ *
+ * ### Sync status lifecycle
+ * `idle → syncing → idle`  (happy path)
+ * `idle → syncing → error` (transient failure — `is_active` stays true, retries self-recover)
+ * `idle → syncing → error` (auth failure — `is_active = false`, needs re-enable)
  */
 class ImapSyncService
 {
