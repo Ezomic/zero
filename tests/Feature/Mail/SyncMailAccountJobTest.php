@@ -15,6 +15,7 @@ class SyncMailAccountJobTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private MailAccount $account;
 
     protected function setUp(): void

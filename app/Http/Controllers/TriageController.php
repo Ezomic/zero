@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
+use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Services\Mail\ImapSyncService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -22,6 +24,7 @@ class TriageController extends Controller
     public function index(Request $request, ImapSyncService $syncService): View
     {
         $accounts = auth()->user()->mailAccounts()->where('is_active', true)->get();
+        /** @var MailAccount|null $account */
         $account = $accounts->firstWhere('id', $request->integer('account')) ?: $accounts->first();
 
         if (! $account) {
@@ -147,7 +150,8 @@ class TriageController extends Controller
         abort_unless($email->mailAccount->user_id === auth()->id(), 403);
     }
 
-    protected function threadEmails(Email $email)
+    /** @return Builder<Email> */
+    protected function threadEmails(Email $email): Builder
     {
         return Email::where('mail_account_id', $email->mail_account_id)
             ->where('thread_id', $email->thread_id);

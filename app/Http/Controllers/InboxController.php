@@ -6,6 +6,7 @@ use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailFolder;
 use App\Services\Mail\ImapSyncService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,7 +53,7 @@ class InboxController extends Controller
         }
 
         if ($request->filled('q')) {
-            $base->whereIn('id', $this->searchEmailIds($request->string('q')->toString(), $accountIds));
+            $base->whereIn('id', $this->searchEmailIds($request->string('q')->toString(), $accountIds->all()));
         }
 
         // Collapse to the latest message per conversation thread.
@@ -249,6 +250,62 @@ class InboxController extends Controller
     }
 
     /**
+     * Returns HTML fragments for new inbox emails that arrived after ?since=<id>.
+     * Only applies to the first page of the unified inbox (no search, page 1).
+     */
+    public function newEmails(Request $request): JsonResponse
+    {
+        $since = $request->integer('since', 0);
+        $selectedAccountId = $request->filled('account') ? $request->integer('account') : null;
+        $folder = $request->get('folder', 'INBOX');
+        $showArchived = $request->boolean('archived');
+
+        $accountIds = auth()->user()->mailAccounts()->pluck('id');
+
+        $base = Email::query()
+            ->whereIn('mail_account_id', $accountIds)
+            ->where('is_deleted', false)
+            ->where('id', '>', $since);
+
+        if ($showArchived) {
+            $base->where('is_archived', true);
+        } else {
+            $base->where('folder', $folder)->where('is_archived', false);
+        }
+
+        if ($selectedAccountId) {
+            $base->where('mail_account_id', $selectedAccountId);
+        }
+
+        $threadEmailIds = (clone $base)->reorder()
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('thread_id')
+            ->pluck('id');
+
+        $emails = Email::whereIn('id', $threadEmailIds)
+            ->with('mailAccount')
+            ->latest('sent_at')
+            ->get();
+
+        if ($emails->isEmpty()) {
+            return response()->json(['html' => [], 'newest_id' => $since]);
+        }
+
+        $threadCounts = Email::whereIn('thread_id', $emails->pluck('thread_id'))
+            ->where('is_deleted', false)
+            ->select('thread_id', DB::raw('count(*) as cnt'))
+            ->groupBy('thread_id')
+            ->pluck('cnt', 'thread_id');
+
+        $html = $emails->map(fn ($email) => view('inbox._email_row', compact('email', 'threadCounts'))->render());
+
+        return response()->json([
+            'html' => $html,
+            'newest_id' => $emails->max('id'),
+        ]);
+    }
+
+    /**
      * Polled by the sidebar badge to approximate real-time new-mail
      * notifications without needing a websocket server.
      */
@@ -271,6 +328,7 @@ class InboxController extends Controller
      * (from mail_folders, canonical ones first, then custom alphabetically),
      * or the generic canonical set when no single account is selected.
      */
+    /** @return array<int, string> */
     protected function foldersFor(?int $accountId): array
     {
         if (! $accountId) {
@@ -302,7 +360,11 @@ class InboxController extends Controller
         return $names;
     }
 
-    protected function searchEmailIds(string $q, $accountIds): array
+    /**
+     * @param  array<int, int>  $accountIds
+     * @return array<int, int>
+     */
+    protected function searchEmailIds(string $q, array $accountIds): array
     {
         if (DB::getDriverName() === 'sqlite') {
             $match = $this->toFtsQuery($q);
@@ -332,7 +394,7 @@ class InboxController extends Controller
 
     protected function toFtsQuery(string $q): string
     {
-        $terms = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY);
+        $terms = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         $terms = array_map(
             fn ($term) => '"'.str_replace('"', '""', $term).'"*',
@@ -347,7 +409,8 @@ class InboxController extends Controller
         abort_unless($email->mailAccount->user_id === auth()->id(), 403);
     }
 
-    protected function threadEmails(Email $email)
+    /** @return Builder<Email> */
+    protected function threadEmails(Email $email): Builder
     {
         return Email::where('mail_account_id', $email->mail_account_id)
             ->where('thread_id', $email->thread_id);

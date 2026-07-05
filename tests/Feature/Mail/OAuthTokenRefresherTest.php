@@ -14,13 +14,14 @@ class OAuthTokenRefresherTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private OAuthTokenRefresher $refresher;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->user = User::factory()->create();
-        $this->refresher = new OAuthTokenRefresher();
+        $this->refresher = new OAuthTokenRefresher;
     }
 
     public function test_returns_stored_token_when_not_expired(): void

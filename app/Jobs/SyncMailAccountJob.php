@@ -18,9 +18,17 @@ class SyncMailAccountJob implements ShouldQueue
 
     // Headers-only bulk sync is much faster than a full-body fetch, but a
     // large mailbox (thousands of messages) can still take a while the first
-    // time. A retry after a timeout resumes quickly since already-synced
-    // messages are skipped (unique on mail_account_id/folder/uid).
-    public int $timeout = 7200;
+    // time. Incremental runs (last_uid > 0) are fast; only the initial bulk
+    // fetch of a large mailbox needs this headroom.
+    public int $timeout = 1800;
+
+    // Space out retries: 1 min, then 5 min — gives transient issues time to
+    // resolve without holding up the queue for long.
+    /** @return array<int, int> */
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
 
     public function __construct(
         protected MailAccount $account,
@@ -37,9 +45,28 @@ class SyncMailAccountJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        $this->account->update([
+        $updates = [
             'sync_status' => 'error',
+            'sync_status_since' => now(),
             'sync_error' => $e->getMessage(),
-        ]);
+        ];
+
+        // Auth failures require user action — retrying is pointless and clogs
+        // the queue. Deactivate immediately so the scheduler stops dispatching.
+        if ($this->isAuthError($e)) {
+            $updates['is_active'] = false;
+        }
+
+        $this->account->update($updates);
+    }
+
+    private function isAuthError(\Throwable $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        return str_contains($message, 'authenticate')
+            || str_contains($message, 'application-specific password')
+            || str_contains($message, 'invalid credentials')
+            || str_contains($message, 'authentication failed');
     }
 }

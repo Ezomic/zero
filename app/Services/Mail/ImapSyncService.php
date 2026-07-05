@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail;
 
+use App\Events\NewEmailArrived;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
@@ -67,6 +68,7 @@ class ImapSyncService
      *  once a folder is already this large in absolute terms, so small
      *  mailboxes with one dominant label aren't wrongly excluded. */
     protected const AGGREGATE_FOLDER_MIN_ABSOLUTE_COUNT = 500;
+
     protected const AGGREGATE_FOLDER_SHARE_THRESHOLD = 0.5;
 
     public function __construct(
@@ -80,7 +82,7 @@ class ImapSyncService
      */
     public function sync(MailAccount $account, int $maxMessagesPerFolder = 5000): void
     {
-        $account->update(['sync_status' => 'syncing', 'sync_error' => null]);
+        $account->update(['sync_status' => 'syncing', 'sync_status_since' => now(), 'sync_error' => null]);
 
         try {
             $client = $this->buildClient($account);
@@ -98,18 +100,26 @@ class ImapSyncService
             foreach ($folders as $remotePath => $localName) {
                 $folder = $client->getFolder($remotePath);
 
-                if ($folder) {
-                    $this->syncFolder($account, $folder, $localName, $maxMessagesPerFolder);
+                if (! $folder) {
+                    continue;
                 }
+
+                $folderRecord = MailFolder::where('mail_account_id', $account->id)
+                    ->where('remote_path', $remotePath)
+                    ->first();
+
+                $this->syncFolder($account, $folder, $folderRecord, $localName, $maxMessagesPerFolder);
             }
 
             $account->update([
                 'sync_status' => 'idle',
+                'sync_status_since' => now(),
                 'last_synced_at' => now(),
             ]);
         } catch (\Throwable $e) {
             $account->update([
                 'sync_status' => 'error',
+                'sync_status_since' => now(),
                 'sync_error' => $e->getMessage(),
             ]);
             throw $e;
@@ -225,6 +235,7 @@ class ImapSyncService
      * a custom folder keyed by its own name, except Gmail's aggregate views
      * (All Mail/Important/Starred) which would just duplicate every message.
      */
+    /** @return array<string, string> */
     protected function foldersToSync(Client $client): array
     {
         $result = ['INBOX' => 'INBOX'];
@@ -331,24 +342,54 @@ class ImapSyncService
         return null;
     }
 
-    protected function syncFolder(MailAccount $account, Folder $folder, string $folderName, int $limit): void
+    protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
     {
-        $messages = $folder->messages()
-            ->all()
-            ->limit($limit)
-            ->fetchOrderDesc()
-            ->setFetchBody(false)
-            ->get();
+        $query = $folder->messages()->setFetchBody(false);
+
+        if ($folderRecord->last_uid > 0) {
+            // Incremental: only fetch messages with a UID higher than the last
+            // one we saw. IMAP UIDs are monotonically increasing per folder, so
+            // this is safe as long as the UIDVALIDITY hasn't changed. If the
+            // server reports a new UIDVALIDITY the folder was recreated and we
+            // need a full resync — reset last_uid to 0 and fetch everything.
+            $examined = $folder->examine();
+            $serverUidValidity = (int) ($examined['uidvalidity'] ?? 0);
+
+            if ($serverUidValidity > 0 && $serverUidValidity !== (int) ($folderRecord->uid_validity ?? $serverUidValidity)) {
+                $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
+                $query = $query->all()->limit($limit)->fetchOrderDesc();
+            } else {
+                $folderRecord->update(['uid_validity' => $serverUidValidity]);
+                $query = $query->whereUidGreaterOrEqual($folderRecord->last_uid + 1)->fetchOrderDesc();
+            }
+        } else {
+            $query = $query->all()->limit($limit)->fetchOrderDesc();
+        }
+
+        $messages = $query->get();
+        $highestUid = $folderRecord->last_uid;
 
         foreach ($messages as $message) {
             $uid = (string) $message->getUid();
+            $numericUid = (int) $uid;
 
-            $exists = Email::where('mail_account_id', $account->id)
+            if ($numericUid > $highestUid) {
+                $highestUid = $numericUid;
+            }
+
+            $existing = Email::where('mail_account_id', $account->id)
                 ->where('folder', $folderName)
                 ->where('uid', $uid)
-                ->exists();
+                ->first();
 
-            if ($exists) {
+            if ($existing) {
+                // Reconcile read flag — catches messages read on another device
+                // since last sync.
+                $serverIsRead = $message->getFlags()->has('Seen');
+                if ($existing->is_read !== $serverIsRead) {
+                    $existing->update(['is_read' => $serverIsRead]);
+                }
+
                 continue;
             }
 
@@ -361,7 +402,11 @@ class ImapSyncService
             $toAddresses = $this->addressesToArray($message->getTo()?->toArray());
             $ccAddresses = $this->addressesToArray($message->getCc()?->toArray());
 
-            $email = Email::create([
+            $subject = $message->getSubject()->toString() ?: '(no subject)';
+            $sentAt = $message->getDate()?->toDate();
+            $isRead = $message->getFlags()->has('Seen');
+
+            Email::create([
                 'mail_account_id' => $account->id,
                 'message_id' => $messageId,
                 'thread_id' => $threadId,
@@ -370,20 +415,37 @@ class ImapSyncService
                 'folder' => $folderName,
                 'remote_folder_path' => $folder->full_name ?? $folder->path,
                 'uid' => $uid,
-                'subject' => $message->getSubject()->toString() ?: '(no subject)',
+                'subject' => $subject,
                 'from_address' => $fromAddress,
                 'from_name' => $fromName,
                 'to_addresses' => $toAddresses,
                 'cc_addresses' => $ccAddresses,
-                // Body/attachments are fetched on demand — see fetchBody().
                 'body_html' => null,
                 'body_text' => null,
-                'is_read' => $message->getFlags()->has('Seen'),
+                'is_read' => $isRead,
                 'has_attachments' => false,
-                'sent_at' => $message->getDate()?->toDate(),
+                'sent_at' => $sentAt,
             ]);
 
+            if ($folderName === 'INBOX' && ! $isRead && $folderRecord->last_uid > 0) {
+                broadcast(new NewEmailArrived(
+                    userId: $account->user_id,
+                    emailId: 0,
+                    folder: $folderName,
+                    fromAddress: $fromAddress ?? '',
+                    fromName: $fromName,
+                    subject: $subject,
+                    sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
+                ))->afterCommit();
+
+                $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+            }
+
             $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
+        }
+
+        if ($highestUid > $folderRecord->last_uid) {
+            $folderRecord->update(['last_uid' => $highestUid]);
         }
     }
 
@@ -407,6 +469,10 @@ class ImapSyncService
         return [$inReplyTo, $references];
     }
 
+    /**
+     * @param  array<int, string>  $to
+     * @param  array<int, string>  $cc
+     */
     protected function recordContacts(MailAccount $account, ?string $fromAddress, ?string $fromName, array $to, array $cc): void
     {
         if ($fromAddress && strcasecmp($fromAddress, $account->email_address) !== 0) {
@@ -428,6 +494,10 @@ class ImapSyncService
         }
     }
 
+    /**
+     * @param  array<int, mixed>|null  $addresses
+     * @return array<int, string>
+     */
     protected function addressesToArray(?array $addresses): array
     {
         if (! $addresses) {
@@ -440,9 +510,17 @@ class ImapSyncService
             ->all();
     }
 
+    protected function notifyMacOs(string $from, string $subject): void
+    {
+        $from = str_replace('"', '\\"', $from);
+        $subject = str_replace('"', '\\"', $subject);
+        $script = "display notification \"{$subject}\" with title \"New mail\" subtitle \"{$from}\" sound name \"Ping\"";
+        exec('osascript -e '.escapeshellarg($script).' > /dev/null 2>&1 &');
+    }
+
     protected function buildClient(MailAccount $account): Client
     {
-        $cm = new ClientManager();
+        $cm = new ClientManager;
 
         $config = [
             'host' => $account->imap_host,

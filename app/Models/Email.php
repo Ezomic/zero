@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,11 +47,13 @@ class Email extends Model
         'sent_at' => 'datetime',
     ];
 
+    /** @return BelongsTo<MailAccount, $this> */
     public function mailAccount(): BelongsTo
     {
         return $this->belongsTo(MailAccount::class);
     }
 
+    /** @return HasMany<EmailAttachment, $this> */
     public function attachments(): HasMany
     {
         return $this->hasMany(EmailAttachment::class);
@@ -58,10 +61,12 @@ class Email extends Model
 
     /**
      * All messages in the same conversation (same account + thread_id), oldest first.
+     *
+     * @return Builder<self>
      */
-    public function threadMessages()
+    public function threadMessages(): Builder
     {
-        return static::query()
+        return self::query()
             ->where('mail_account_id', $this->mail_account_id)
             ->where('thread_id', $this->thread_id)
             ->where('is_deleted', false)

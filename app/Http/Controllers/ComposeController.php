@@ -65,6 +65,7 @@ class ComposeController extends Controller
             'attachments.*' => ['nullable', 'file', 'max:10240'],
         ]);
 
+        /** @var MailAccount $account */
         $account = MailAccount::findOrFail($data['mail_account_id']);
         abort_unless($account->user_id === auth()->id(), 403);
 
@@ -152,6 +153,7 @@ class ComposeController extends Controller
         return trim($formatted) ?: null;
     }
 
+    /** @return array<string, mixed> */
     protected function emptyPrefill(): array
     {
         return [
@@ -166,6 +168,7 @@ class ComposeController extends Controller
         ];
     }
 
+    /** @return array<int, string> */
     protected function splitAddresses(string $raw): array
     {
         return collect(explode(',', $raw))
