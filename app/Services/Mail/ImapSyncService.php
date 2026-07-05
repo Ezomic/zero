@@ -376,7 +376,8 @@ class ImapSyncService
 
     protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
     {
-        $query = $folder->messages()->setFetchBody(false);
+        $query = $folder->messages()->setFetchBody(false)->limit($limit)->fetchOrderDesc();
+        $incremental = false;
 
         if ($folderRecord->last_uid > 0) {
             // Incremental: only fetch messages with a UID higher than the last
@@ -389,17 +390,18 @@ class ImapSyncService
 
             if ($serverUidValidity > 0 && $serverUidValidity !== (int) ($folderRecord->uid_validity ?? $serverUidValidity)) {
                 $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
-                $messages = $query->all()->limit($limit)->fetchOrderDesc()->get();
             } else {
                 $folderRecord->update(['uid_validity' => $serverUidValidity]);
-                // whereUidGreaterOrEqual() isn't supported by the installed
-                // webklex/php-imap version — getByUidGreaterOrEqual() filters
-                // the folder's UID list client-side instead.
-                $messages = $query->fetchOrderDesc()->getByUidGreaterOrEqual($folderRecord->last_uid + 1);
+                $incremental = true;
             }
-        } else {
-            $messages = $query->all()->limit($limit)->fetchOrderDesc()->get();
         }
+
+        // whereUidGreaterOrEqual() isn't supported by the installed
+        // webklex/php-imap version — getByUidGreaterOrEqual() filters the
+        // folder's UID list client-side instead.
+        $messages = $incremental
+            ? $query->getByUidGreaterOrEqual($folderRecord->last_uid + 1)
+            : $query->all()->get();
         $highestUid = $folderRecord->last_uid;
 
         foreach ($messages as $message) {
