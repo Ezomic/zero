@@ -123,7 +123,7 @@ sudo systemctl reload php8.4-fpm
 ok "PHP-FPM reloaded"
 
 step "Restarting mail-app supervisor programs"
-sudo supervisorctl restart mail-queue:* mail-scheduler:* mail-reverb:* mail-idle-6:* > /dev/null
+sudo supervisorctl restart mail-queue:* mail-scheduler:* mail-reverb:* mail-idle-10:* > /dev/null
 ok "Queue, scheduler, Reverb, and IMAP IDLE restarted"
 
 # ── 10. Back online ───────────────────────────────────────────────────────────
