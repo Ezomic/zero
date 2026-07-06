@@ -1,11 +1,11 @@
 {
-    "name": "Mail",
-    "short_name": "Mail",
+    "name": "Zero",
+    "short_name": "Zero",
     "description": "Your personal mail client",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#f9fafb",
-    "theme_color": "#2563eb",
+    "background_color": "#0B0D12",
+    "theme_color": "#7C6FF0",
     "icons": [
         {
             "src": "/favicon.ico",

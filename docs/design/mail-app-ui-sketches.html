@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mail — UI redesign sketches</title>
+<style>
+  @font-face { font-family: 'Inter'; src: local('Inter'); }
+
+  :root[data-theme="dark"]{
+    --bg:#0B0D12; --bg-1:#12151C; --bg-2:#191D26; --bg-3:#1F2430;
+    --border:#262B37; --border-soft:#1D212B;
+    --text:#E8EAEF; --text-dim:#9098AC; --text-faint:#5C6377;
+    --accent:#7C6FF0; --accent-strong:#9186FF; --accent-soft:rgba(124,111,240,.16); --accent-text:#C9C3FF;
+    --success:#34D399; --success-soft:rgba(52,211,153,.14);
+    --danger:#F1596E; --danger-soft:rgba(241,89,110,.14);
+    --warning:#F0B84F; --warning-soft:rgba(240,184,79,.14);
+    --shadow:0 20px 50px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
+    --shadow-sm:0 4px 14px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{
+    --bg:#F3F4F7; --bg-1:#FFFFFF; --bg-2:#FBFBFD; --bg-3:#F1F1F6;
+    --border:#E5E7EE; --border-soft:#EDEEF3;
+    --text:#181B23; --text-dim:#666E80; --text-faint:#9AA1B2;
+    --accent:#6C5CE7; --accent-strong:#5A48DB; --accent-soft:rgba(108,92,231,.10); --accent-text:#5A48DB;
+    --success:#189A5D; --success-soft:rgba(24,154,93,.10);
+    --danger:#DA2F4E; --danger-soft:rgba(218,47,78,.09);
+    --warning:#B8790C; --warning-soft:rgba(184,121,12,.10);
+    --shadow:0 20px 50px rgba(30,34,50,.12), 0 2px 8px rgba(30,34,50,.06);
+    --shadow-sm:0 4px 14px rgba(30,34,50,.08);
+    color-scheme: light;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    font-size:14px; line-height:1.45;
+  }
+  ::selection{ background:var(--accent-soft); }
+  a{ color:inherit; text-decoration:none; }
+  button{ font-family:inherit; font-size:inherit; cursor:pointer; }
+  svg{ display:block; flex-shrink:0; }
+
+  /* ---------- sketch-deck chrome (not part of the app itself) ---------- */
+  .deckbar{
+    position:sticky; top:0; z-index:100;
+    display:flex; align-items:center; gap:6px;
+    padding:10px 16px; background:var(--bg-1); border-bottom:1px solid var(--border);
+    overflow-x:auto;
+  }
+  .deckbar .deck-title{ font-weight:700; font-size:13px; margin-right:10px; white-space:nowrap; letter-spacing:.2px; }
+  .deckbar .deck-title span{ color:var(--text-faint); font-weight:500; margin-left:6px; }
+  .deck-tab{
+    border:1px solid var(--border); background:var(--bg-2); color:var(--text-dim);
+    padding:7px 12px; border-radius:8px; font-size:12.5px; font-weight:600; white-space:nowrap;
+    display:flex; align-items:center; gap:6px; transition:.12s;
+  }
+  .deck-tab .num{
+    width:16px;height:16px;border-radius:5px;background:var(--bg-3);color:var(--text-faint);
+    font-size:10px; display:flex; align-items:center; justify-content:center; font-weight:800;
+  }
+  .deck-tab:hover{ color:var(--text); border-color:var(--text-faint); }
+  .deck-tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-text); }
+  .deck-tab.active .num{ background:var(--accent); color:#fff; }
+  .deckbar-spacer{ flex:1; }
+  .theme-toggle{
+    border:1px solid var(--border); background:var(--bg-2); color:var(--text-dim);
+    width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .theme-toggle:hover{ color:var(--text); }
+
+  .screen{ display:none; min-height:calc(100vh - 53px); }
+  .screen.active{ display:block; }
+
+  /* ---------- shared app shell ---------- */
+  .app-shell{ display:flex; height:calc(100vh - 53px); min-height:640px; }
+  .navrail{
+    width:236px; flex-shrink:0; background:var(--bg-1); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:16px 12px;
+  }
+  .brand{ display:flex; align-items:center; gap:9px; padding:4px 8px 18px; }
+  .brand-mark{
+    width:26px; height:26px; border-radius:8px; flex-shrink:0;
+    background:linear-gradient(135deg,var(--accent),#5AC8E0);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .brand-name{ font-weight:800; font-size:14.5px; letter-spacing:.1px; }
+
+  .nav-search{
+    display:flex; align-items:center; gap:8px; padding:8px 10px; margin-bottom:14px;
+    background:var(--bg-2); border:1px solid var(--border); border-radius:9px; color:var(--text-faint);
+  }
+  .nav-search span{ font-size:12.5px; }
+  .nav-search kbd{
+    margin-left:auto; font-size:10px; border:1px solid var(--border); background:var(--bg-3);
+    color:var(--text-faint); padding:1px 5px; border-radius:4px;
+  }
+
+  .nav-section{ display:flex; flex-direction:column; gap:1px; margin-bottom:10px; }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
+    color:var(--text-dim); font-weight:600; font-size:13px;
+  }
+  .nav-item svg{ color:var(--text-faint); }
+  .nav-item:hover{ background:var(--bg-2); color:var(--text); }
+  .nav-item.active{ background:var(--accent-soft); color:var(--accent-text); }
+  .nav-item.active svg{ color:var(--accent-text); }
+  .nav-item .count{ margin-left:auto; font-size:11.5px; color:var(--text-faint); font-weight:700; }
+  .nav-item.active .count{ color:var(--accent-text); }
+  .nav-item.warn{ color:var(--warning); }
+  .nav-item.warn svg{ color:var(--warning); }
+  .nav-item.warn .count{
+    background:var(--warning-soft); color:var(--warning); padding:1px 7px; border-radius:20px;
+  }
+
+  .btn-compose{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--accent); color:#fff; border:none; border-radius:9px;
+    padding:10px 12px; font-weight:700; font-size:13.5px; margin:6px 0 14px;
+    box-shadow:0 6px 16px rgba(124,111,240,.35);
+  }
+  .btn-compose:hover{ background:var(--accent-strong); }
+
+  .nav-label{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-faint);
+    font-weight:800; padding:6px 10px 6px;
+  }
+  .acct-row{ display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:8px; color:var(--text-dim); }
+  .acct-row:hover{ background:var(--bg-2); color:var(--text); }
+  .acct-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .acct-row .name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:600; }
+  .acct-row .n{ font-size:11px; color:var(--text-faint); font-weight:700; }
+
+  .navrail-foot{ margin-top:auto; display:flex; flex-direction:column; gap:1px; padding-top:10px; border-top:1px solid var(--border-soft); }
+  .navrail-foot .nav-item{ font-weight:500; color:var(--text-faint); }
+
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; background:var(--bg); }
+
+  /* ---------- icon helper ---------- */
+  .ic{ width:16px; height:16px; }
+  .ic-sm{ width:14px; height:14px; }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; border-radius:8px; font-weight:600; font-size:13px;
+    padding:8px 13px; border:1px solid var(--border); background:var(--bg-2); color:var(--text);
+  }
+  .btn:hover{ border-color:var(--text-faint); }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.primary:hover{ background:var(--accent-strong); }
+  .btn.danger{ color:var(--danger); }
+  .btn.danger:hover{ border-color:var(--danger); }
+  .btn.ghost{ background:transparent; border-color:transparent; color:var(--text-dim); }
+  .btn.ghost:hover{ background:var(--bg-2); color:var(--text); }
+  .btn.sm{ padding:6px 10px; font-size:12px; }
+  .icon-btn{
+    width:30px;height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border); background:var(--bg-2); color:var(--text-dim);
+  }
+  .icon-btn:hover{ color:var(--text); border-color:var(--text-faint); }
+
+  .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:11.5px; font-weight:700; }
+  .pill.success{ background:var(--success-soft); color:var(--success); }
+  .pill.danger{ background:var(--danger-soft); color:var(--danger); }
+  .pill.warn{ background:var(--warning-soft); color:var(--warning); }
+  .pill.neutral{ background:var(--bg-3); color:var(--text-faint); }
+
+  /* ================= 1. LOGIN ================= */
+  .login-wrap{
+    min-height:calc(100vh - 53px); display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+  }
+  .login-blob{ position:absolute; border-radius:50%; filter:blur(70px); opacity:.35; }
+  .login-blob.b1{ width:420px; height:420px; background:var(--accent); top:-120px; left:-100px; }
+  .login-blob.b2{ width:360px; height:360px; background:#3FC7C0; bottom:-140px; right:-80px; opacity:.22; }
+  .login-card{
+    position:relative; width:380px; background:var(--bg-1); border:1px solid var(--border); border-radius:18px;
+    padding:34px 32px 28px; box-shadow:var(--shadow);
+  }
+  .login-mark{ width:44px; height:44px; border-radius:13px; background:linear-gradient(135deg,var(--accent),#5AC8E0);
+    display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }
+  .login-card h1{ font-size:19px; text-align:center; margin:0 0 4px; }
+  .login-card p.sub{ text-align:center; color:var(--text-dim); font-size:13px; margin:0 0 24px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--text-dim); margin-bottom:6px; }
+  .field input{
+    width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:var(--bg-2);
+    color:var(--text); font-size:13.5px;
+  }
+  .field input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .row-between{ display:flex; align-items:center; justify-content:space-between; margin:14px 0 18px; font-size:12.5px; }
+  .checkline{ display:flex; align-items:center; gap:7px; color:var(--text-dim); }
+  .checkline input{ accent-color:var(--accent); }
+  .login-card .btn.primary{ width:100%; justify-content:center; padding:11px; font-size:14px; }
+  .login-divider{ display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:11px; margin:20px 0 14px; }
+  .login-divider::before, .login-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+  .login-dev{ text-align:center; font-size:12.5px; color:var(--text-faint); }
+
+  /* ================= 2/3. INBOX + THREAD ================= */
+  .list-header{ padding:14px 18px 12px; border-bottom:1px solid var(--border); }
+  .list-header-top{ display:flex; align-items:center; justify-content:between; gap:10px; margin-bottom:12px; }
+  .list-header h1{ font-size:18px; margin:0; flex:1; }
+  .folder-tabs{ display:flex; gap:6px; flex-wrap:wrap; }
+  .folder-tab{ padding:6px 12px; border-radius:7px; font-size:12.5px; font-weight:700; color:var(--text-dim); border:1px solid transparent; }
+  .folder-tab.active{ background:var(--accent-soft); color:var(--accent-text); }
+  .folder-tab:not(.active):hover{ background:var(--bg-2); }
+
+  .inbox-body{ flex:1; display:flex; min-height:0; }
+  .thread-list{ width:380px; flex-shrink:0; border-right:1px solid var(--border); overflow-y:auto; }
+  .toolbar{ display:flex; align-items:center; gap:8px; padding:10px 16px; border-bottom:1px solid var(--border-soft); }
+  .toolbar .sep{ width:1px; height:18px; background:var(--border); margin:0 2px; }
+
+  .trow{ display:flex; gap:11px; padding:13px 16px; border-bottom:1px solid var(--border-soft); position:relative; }
+  .trow:hover{ background:var(--bg-1); }
+  .trow.selected{ background:var(--accent-soft); }
+  .trow.selected::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); }
+  .trow.unread::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .avatar{ width:34px; height:34px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:800; font-size:12.5px; }
+  .trow-main{ min-width:0; flex:1; }
+  .trow-top{ display:flex; justify-content:space-between; gap:8px; }
+  .trow-from{ font-size:13.2px; color:var(--text-dim); font-weight:600; }
+  .trow.unread .trow-from{ color:var(--text); font-weight:800; }
+  .trow-time{ font-size:11px; color:var(--text-faint); flex-shrink:0; }
+  .trow-subject{ font-size:13px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trow.unread .trow-subject{ color:var(--text); font-weight:700; }
+  .trow-snippet{ font-size:12.5px; color:var(--text-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trow-badge{ font-size:10.5px; background:var(--bg-3); color:var(--text-faint); padding:0 6px; border-radius:20px; font-weight:800; margin-left:6px; }
+
+  .reading-pane{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .rp-header{ padding:16px 22px; border-bottom:1px solid var(--border); display:flex; align-items:start; justify-content:space-between; gap:16px; }
+  .rp-header h2{ font-size:17px; margin:0 0 6px; }
+  .rp-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ display:inline-flex; align-items:center; gap:6px; background:var(--bg-2); border:1px solid var(--border); padding:4px 9px 4px 5px; border-radius:20px; font-size:12px; color:var(--text-dim); }
+  .chip .dot{ width:16px;height:16px; border-radius:50%; color:#fff; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .rp-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .rp-body{ flex:1; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:12px; }
+  .msg{ border:1px solid var(--border); border-radius:12px; background:var(--bg-1); overflow:hidden; }
+  .msg-head{ display:flex; align-items:center; gap:10px; padding:12px 16px; }
+  .msg-head .who{ font-weight:700; font-size:13px; }
+  .msg-head .addr{ font-size:12px; color:var(--text-faint); }
+  .msg-head .when{ margin-left:auto; font-size:11.5px; color:var(--text-faint); }
+  .msg-collapsed .msg-head{ cursor:pointer; }
+  .msg-collapsed .msg-preview{ padding:0 16px 12px; font-size:12.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .msg-body{ padding:0 16px 16px; font-size:13.5px; color:var(--text); border-top:1px solid var(--border-soft); margin-top:2px; padding-top:14px; line-height:1.6; }
+  .msg-body p{ margin:0 0 10px; }
+  .msg.expanded{ box-shadow:var(--shadow-sm); border-color:var(--accent); }
+  .attach-row{ display:flex; gap:8px; padding:0 16px 14px; flex-wrap:wrap; }
+  .attach-chip{ display:flex; align-items:center; gap:7px; background:var(--bg-2); border:1px solid var(--border); border-radius:9px; padding:6px 10px 6px 8px; font-size:12px; color:var(--text-dim); }
+
+  .rp-reply{ border-top:1px solid var(--border); padding:14px 22px 18px; }
+  .rp-reply-box{ border:1px solid var(--border); border-radius:12px; background:var(--bg-1); padding:12px 14px; }
+  .rp-reply-box textarea{ width:100%; border:none; background:transparent; color:var(--text); resize:none; font-family:inherit; font-size:13.5px; outline:none; min-height:40px; }
+  .rp-reply-foot{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+
+  .empty-hint{ margin:auto; text-align:center; color:var(--text-faint); font-size:13px; padding:40px; }
+
+  /* ================= THREAD FOCUS ================= */
+  .focus-wrap{ max-width:760px; margin:0 auto; padding:26px 24px 60px; }
+  .focus-back{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-dim); font-weight:700; margin-bottom:16px; }
+  .focus-title{ font-size:22px; font-weight:800; margin:0 0 16px; }
+
+  /* ================= 4. COMPOSE ================= */
+  .backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:40; }
+  .composer{
+    position:fixed; right:22px; bottom:22px; width:560px; max-width:calc(100vw - 44px);
+    background:var(--bg-1); border:1px solid var(--border); border-radius:16px 16px 10px 10px;
+    box-shadow:var(--shadow); z-index:50; display:flex; flex-direction:column; max-height:calc(100vh - 90px);
+  }
+  .composer-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+  .composer-head .title{ font-weight:700; font-size:13px; }
+  .composer-body{ padding:14px 18px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .cfield{ display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border-soft); padding-bottom:10px; }
+  .cfield label{ width:52px; flex-shrink:0; color:var(--text-faint); font-size:12.5px; font-weight:700; }
+  .from-pill{ display:inline-flex; align-items:center; gap:7px; background:var(--bg-2); border:1px solid var(--border); padding:5px 10px 5px 6px; border-radius:20px; font-size:12.5px; font-weight:600; }
+  .recipients{ flex:1; display:flex; flex-wrap:wrap; gap:6px; }
+  .recip-chip{ display:flex; align-items:center; gap:6px; background:var(--accent-soft); color:var(--accent-text); border-radius:20px; padding:3px 10px 3px 8px; font-size:12px; font-weight:700; }
+  .cfield input{ border:none; background:transparent; outline:none; color:var(--text); flex:1; font-size:13px; min-width:80px; }
+  .cfield.subject input{ font-weight:700; font-size:14px; }
+  .composer-textarea{ border:none; background:transparent; color:var(--text); font-family:inherit; font-size:13.5px; resize:none; outline:none; min-height:180px; line-height:1.6; }
+  .composer-foot{ display:flex; align-items:center; gap:8px; padding:12px 16px; border-top:1px solid var(--border); }
+  .draft-status{ margin-left:auto; font-size:11.5px; color:var(--text-faint); }
+
+  /* ================= 5. TRIAGE ================= */
+  .triage-wrap{ max-width:640px; margin:0 auto; padding:34px 24px 60px; }
+  .triage-progress{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+  .triage-progress .stat{ font-size:13px; color:var(--text-dim); font-weight:700; }
+  .dots{ display:flex; gap:5px; }
+  .dots i{ width:22px; height:5px; border-radius:4px; background:var(--bg-3); display:block; }
+  .dots i.done{ background:var(--accent); }
+  .triage-card{ background:var(--bg-1); border:1px solid var(--border); border-radius:16px; padding:22px; box-shadow:var(--shadow-sm); }
+  .triage-card-top{ display:flex; justify-content:space-between; align-items:start; margin-bottom:4px; }
+  .triage-from{ font-weight:800; font-size:15px; }
+  .triage-addr{ color:var(--text-faint); font-size:12.5px; }
+  .triage-subject{ font-weight:700; font-size:14.5px; margin:10px 0 12px; }
+  .triage-preview{ border-top:1px solid var(--border-soft); padding-top:14px; color:var(--text-dim); font-size:13.5px; max-height:220px; overflow-y:auto; line-height:1.65; }
+  .triage-suggest{
+    margin-top:18px; width:100%; display:flex; align-items:center; justify-content:space-between;
+    background:var(--success-soft); border:1px solid transparent; color:var(--success); border-radius:11px;
+    padding:13px 16px; font-weight:700; font-size:13.5px;
+  }
+  .triage-suggest small{ font-weight:600; opacity:.75; font-size:11px; }
+  .triage-actions{ display:flex; gap:8px; margin-top:10px; }
+  .triage-actions .btn{ flex:1; justify-content:center; padding:11px; }
+  .triage-key{ text-align:center; color:var(--text-faint); font-size:11.5px; margin-top:14px; }
+  .triage-key kbd{ border:1px solid var(--border); background:var(--bg-2); border-radius:4px; padding:1px 6px; font-size:10.5px; }
+
+  /* ================= 7. ACCOUNTS ================= */
+  .page-pad{ padding:24px 28px 60px; overflow-y:auto; }
+  .page-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .page-head h1{ font-size:20px; margin:0; }
+  .add-tiles{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:26px; }
+  .add-tile{ border:1.5px dashed var(--border); border-radius:13px; padding:16px; display:flex; align-items:center; gap:12px; color:var(--text-dim); }
+  .add-tile:hover{ border-color:var(--accent); color:var(--text); background:var(--accent-soft); }
+  .add-tile .glyph{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; flex-shrink:0; }
+  .add-tile .t1{ font-weight:700; font-size:13px; }
+  .add-tile .t2{ font-size:11.5px; color:var(--text-faint); }
+
+  .acct-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .acct-card{ background:var(--bg-1); border:1px solid var(--border); border-radius:14px; padding:16px; }
+  .acct-card-top{ display:flex; align-items:center; gap:11px; margin-bottom:10px; }
+  .acct-ring{ width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:13px; flex-shrink:0; }
+  .acct-card .addr{ font-weight:700; font-size:13.5px; }
+  .acct-card .provider{ font-size:11px; color:var(--text-faint); text-transform:uppercase; font-weight:700; letter-spacing:.4px; }
+  .acct-status{ font-size:12.5px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+  .acct-card-foot{ display:flex; gap:6px; padding-top:12px; border-top:1px solid var(--border-soft); }
+
+  /* ================= 8. ADD ACCOUNT ================= */
+  .form-card{ max-width:560px; background:var(--bg-1); border:1px solid var(--border); border-radius:16px; padding:26px 28px; }
+  .form-card h2{ font-size:17px; margin:0 0 4px; }
+  .form-card .lead{ color:var(--text-dim); font-size:13px; margin:0 0 20px; }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+  .form-grid .full{ grid-column:1/-1; }
+  .form-grid .field label{ margin-bottom:5px; }
+  .color-swatches{ display:flex; gap:8px; }
+  .swatch{ width:24px; height:24px; border-radius:50%; border:2px solid transparent; }
+  .swatch.selected{ border-color:var(--text); }
+  .test-status{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:9px; background:var(--success-soft); color:var(--success); font-size:12.5px; font-weight:700; margin-top:16px; }
+</style>
+</head>
+<body>
+
+<!-- ================= SVG ICON SPRITE ================= -->
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="i-inbox" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h4l2 3h4l2-3h4M4 12l1.4-6.3A2 2 0 0 1 7.35 4h9.3a2 2 0 0 1 1.95 1.7L20 12M4 12v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/></symbol>
+<symbol id="i-sent" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z"/></symbol>
+<symbol id="i-draft" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m17 3 4 4L9 19l-4 1 1-4Z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M9 6V4h6v2m1 0v14a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V6h8ZM10 11v6M14 11v6"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 4h16v4H4V4Zm1 4h14v12H5V8Zm5 4h4"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3ZM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 21v-1a5 5 0 0 1 5-5h1M13 21v-1a4 4 0 0 1 4-4h1a4 4 0 0 1 4 4v1M8 11a3 3 0 1 0 0-6"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.35-4.35"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.4-6.4-1.4 1.4M7 17l-1.4 1.4M17 17l1.4 1.4M7 7 5.6 5.6M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M21.4 11.1 12.3 20a4.8 4.8 0 0 1-6.8-6.8l9-9a3.2 3.2 0 0 1 4.6 4.6l-9 9a1.6 1.6 0 1 1-2.3-2.3l8-8"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-reply" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 10 4 15l5 5M4 15h9a6 6 0 0 0 6-6V7"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 4.4 2.7 18a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 4.4a2 2 0 0 0-3.4 0Z"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m17 3 4 4L9 19l-4 1 1-4Z"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></symbol>
+</defs>
+</svg>
+
+<!-- ================= DECK BAR ================= -->
+<div class="deckbar">
+  <div class="deck-title">Mail — UI sketches <span>redesign concepts, click to browse</span></div>
+  <button class="deck-tab active" data-tab="1"><span class="num">1</span>Login</button>
+  <button class="deck-tab" data-tab="2"><span class="num">2</span>Inbox</button>
+  <button class="deck-tab" data-tab="3"><span class="num">3</span>Thread</button>
+  <button class="deck-tab" data-tab="4"><span class="num">4</span>Compose</button>
+  <button class="deck-tab" data-tab="5"><span class="num">5</span>Process Inbox</button>
+  <button class="deck-tab" data-tab="6"><span class="num">6</span>Drafts</button>
+  <button class="deck-tab" data-tab="7"><span class="num">7</span>Accounts</button>
+  <button class="deck-tab" data-tab="8"><span class="num">8</span>Add account</button>
+  <div class="deckbar-spacer"></div>
+  <button class="theme-toggle" id="themeToggle" title="Toggle light/dark"><svg class="ic"><use href="#i-moon"/></svg></button>
+</div>
+
+<!-- ================= 1. LOGIN ================= -->
+<section class="screen active" data-screen="1">
+  <div class="login-wrap">
+    <div class="login-blob b1"></div>
+    <div class="login-blob b2"></div>
+    <div class="login-card">
+      <div class="login-mark"><svg class="ic" style="color:#fff;width:22px;height:22px"><use href="#i-inbox"/></svg></div>
+      <h1>Welcome back</h1>
+      <p class="sub">One inbox. Every account.</p>
+      <div class="field"><label>Email</label><input type="email" placeholder="robbin@thijssensoftware.nl"></div>
+      <div class="field"><label>Password</label><input type="password" placeholder="••••••••••••"></div>
+      <div class="row-between">
+        <label class="checkline"><input type="checkbox"> Remember me</label>
+        <a href="#" style="color:var(--text-dim); font-weight:600;">Forgot password?</a>
+      </div>
+      <button class="btn primary">Log in</button>
+      <div class="login-divider">DEVELOPMENT</div>
+      <div class="login-dev">Continue as <strong style="color:var(--text-dim)">test@example.com</strong></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. INBOX ================= -->
+<section class="screen" data-screen="2">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="inbox"></aside>
+    <div class="main">
+      <div class="list-header">
+        <div class="list-header-top">
+          <h1>Inbox</h1>
+          <div class="icon-btn"><svg class="ic-sm"><use href="#i-search"/></svg></div>
+          <button class="btn sm ghost">All accounts <svg class="ic-sm"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="folder-tabs">
+          <div class="folder-tab active">Inbox</div>
+          <div class="folder-tab">Sent</div>
+          <div class="folder-tab">Drafts</div>
+          <div class="folder-tab">Trash</div>
+        </div>
+      </div>
+      <div class="inbox-body">
+        <div class="thread-list">
+          <div class="toolbar">
+            <input type="checkbox">
+            <div class="sep"></div>
+            <div class="icon-btn" title="Archive"><svg class="ic-sm"><use href="#i-archive"/></svg></div>
+            <div class="icon-btn" title="Mark read"><svg class="ic-sm"><use href="#i-check"/></svg></div>
+            <div class="icon-btn" title="Delete"><svg class="ic-sm"><use href="#i-trash"/></svg></div>
+          </div>
+          <div id="threadList"></div>
+        </div>
+        <div class="reading-pane" id="readingPane"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3. THREAD FOCUS ================= -->
+<section class="screen" data-screen="3">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="inbox"></aside>
+    <div class="main" style="overflow-y:auto;">
+      <div class="focus-wrap">
+        <a class="focus-back"><svg class="ic-sm"><use href="#i-back"/></svg> Back to inbox</a>
+        <div style="display:flex; justify-content:space-between; align-items:start; gap:16px;">
+          <h1 class="focus-title">Q3 invoice — ThijssenSoftware ↔ Vercel</h1>
+          <div class="rp-actions">
+            <div class="icon-btn"><svg class="ic-sm"><use href="#i-archive"/></svg></div>
+            <div class="icon-btn"><svg class="ic-sm"><use href="#i-trash"/></svg></div>
+            <div class="icon-btn"><svg class="ic-sm"><use href="#i-more"/></svg></div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+          <div class="msg">
+            <div class="msg-head">
+              <div class="avatar" style="background:#8B7CF6; width:30px;height:30px;font-size:11px;">VB</div>
+              <div><span class="who">Vercel Billing</span> <span class="addr">&lt;billing@vercel.com&gt;</span></div>
+              <div class="when">Jul 2, 9:14 AM</div>
+            </div>
+            <div class="msg-body">
+              <p>Hi Robbin, your invoice for the Pro plan (Jul 1 – Jul 31) is attached. Total due: €20.00, charged automatically to your card ending 4242.</p>
+              <p>Let us know if you have any questions about this billing cycle.</p>
+            </div>
+            <div class="attach-row">
+              <div class="attach-chip"><svg class="ic-sm"><use href="#i-clip"/></svg> invoice-3311.pdf · 88 KB</div>
+            </div>
+          </div>
+          <div class="msg msg-collapsed">
+            <div class="msg-head">
+              <div class="avatar" style="background:#F0954B; width:30px;height:30px;font-size:11px;">RT</div>
+              <div><span class="who">You</span> <span class="addr">&lt;info@thijssensoftware.nl&gt;</span></div>
+              <div class="when">Jul 2, 9:40 AM</div>
+            </div>
+            <div class="msg-preview">Thanks, got it — forwarding to our bookkeeper now for Q3 reconciliation…</div>
+          </div>
+        </div>
+        <div class="rp-reply" style="padding-left:0; padding-right:0;">
+          <div class="rp-reply-box">
+            <textarea placeholder="Reply to Vercel Billing…"></textarea>
+            <div class="rp-reply-foot">
+              <button class="btn primary sm"><svg class="ic-sm"><use href="#i-reply"/></svg> Send reply</button>
+              <div class="icon-btn"><svg class="ic-sm"><use href="#i-clip"/></svg></div>
+              <span style="margin-left:auto; font-size:11.5px; color:var(--text-faint);">Sending as info@thijssensoftware.nl</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. COMPOSE ================= -->
+<section class="screen" data-screen="4">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="compose"></aside>
+    <div class="main">
+      <div class="list-header"><h1>Inbox</h1></div>
+      <div class="empty-hint">The compose panel opens as a floating card over whatever you were doing — inbox stays right where you left it.</div>
+    </div>
+  </div>
+  <div class="backdrop"></div>
+  <div class="composer">
+    <div class="composer-head">
+      <span class="title">New message</span>
+      <div style="display:flex; gap:4px;">
+        <div class="icon-btn" style="width:26px;height:26px;"><svg class="ic-sm"><use href="#i-x"/></svg></div>
+      </div>
+    </div>
+    <div class="composer-body">
+      <div class="cfield">
+        <label>From</label>
+        <div class="from-pill"><span class="acct-dot" style="background:#F0954B"></span> info@thijssensoftware.nl <svg class="ic-sm"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="cfield">
+        <label>To</label>
+        <div class="recipients">
+          <span class="recip-chip">sanne@vercel.com <svg class="ic-sm" style="width:11px;height:11px"><use href="#i-x"/></svg></span>
+          <input placeholder="Add recipient…">
+        </div>
+      </div>
+      <div class="cfield">
+        <label>Cc</label>
+        <div class="recipients"><input placeholder="Add Cc…"></div>
+      </div>
+      <div class="cfield subject"><label>Subject</label><input value="Re: Q3 invoice — ThijssenSoftware ↔ Vercel"></div>
+      <textarea class="composer-textarea" placeholder="Write your message…">Hi Sanne,
+
+Thanks for sending this over — forwarding to our bookkeeper now for Q3 reconciliation.
+
+Best,
+Robbin</textarea>
+      <div class="attach-row" style="padding:0;">
+        <div class="attach-chip"><svg class="ic-sm"><use href="#i-clip"/></svg> invoice-3311.pdf · 88 KB</div>
+      </div>
+    </div>
+    <div class="composer-foot">
+      <button class="btn primary">Send</button>
+      <div class="icon-btn"><svg class="ic-sm"><use href="#i-clip"/></svg></div>
+      <div class="icon-btn danger" style="color:var(--danger)"><svg class="ic-sm"><use href="#i-trash"/></svg></div>
+      <span class="draft-status">Draft saved 2s ago</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5. TRIAGE ================= -->
+<section class="screen" data-screen="5">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="triage"></aside>
+    <div class="main" style="overflow-y:auto;">
+      <div class="triage-wrap">
+        <div class="triage-progress">
+          <span class="triage-progress-title" style="font-weight:800; font-size:18px;">Process Inbox</span>
+          <span class="stat">6 left · info@thijssensoftware.nl</span>
+        </div>
+        <div class="dots" style="margin-bottom:18px;">
+          <i class="done"></i><i class="done"></i><i class="done"></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="triage-card">
+          <div class="triage-card-top">
+            <div>
+              <div class="triage-from">GitHub</div>
+              <div class="triage-addr">notifications@github.com</div>
+            </div>
+            <div class="pill neutral">Jul 5, 6:02 PM</div>
+          </div>
+          <div class="triage-subject">[thijssensoftware/mail-app] 3 checks failed on your last push</div>
+          <div class="triage-preview">Your workflow run "CI" completed with failures. Two PHPUnit tests failed in tests/Feature/Mail/ImapSyncServiceTest.php — likely related to the folder-recreation UID validity fix…</div>
+          <button class="triage-suggest">
+            <span>✨ Suggested: mark read &amp; move to <u>Archived</u></span>
+            <small>based on mail from this sender</small>
+          </button>
+          <div class="triage-actions">
+            <button class="btn danger">Delete</button>
+            <button class="btn ghost">Skip</button>
+            <button class="btn primary">Mark read &amp; move</button>
+          </div>
+        </div>
+        <div class="triage-key"><kbd>D</kbd> delete &nbsp; <kbd>S</kbd> skip &nbsp; <kbd>Enter</kbd> accept suggestion</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6. DRAFTS ================= -->
+<section class="screen" data-screen="6">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="drafts"></aside>
+    <div class="main">
+      <div class="list-header"><div class="list-header-top"><h1>Drafts</h1></div></div>
+      <div class="inbox-body">
+        <div class="thread-list" style="width:100%; border-right:none;" id="draftsList"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7. ACCOUNTS ================= -->
+<section class="screen" data-screen="7">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="accounts"></aside>
+    <div class="main">
+      <div class="page-pad">
+        <div class="page-head"><h1>Connected accounts</h1></div>
+        <div class="add-tiles">
+          <div class="add-tile"><div class="glyph" style="background:#EA4335">G</div><div><div class="t1">Connect Gmail</div><div class="t2">OAuth · read + send</div></div></div>
+          <div class="add-tile"><div class="glyph" style="background:#0364B8">O</div><div><div class="t1">Connect Outlook</div><div class="t2">OAuth · read + send</div></div></div>
+          <div class="add-tile"><div class="glyph" style="background:var(--accent)"><svg class="ic-sm" style="color:#fff"><use href="#i-plus"/></svg></div><div><div class="t1">Custom IMAP/SMTP</div><div class="t2">Any mailbox</div></div></div>
+        </div>
+        <div class="acct-grid" id="acctGrid"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 8. ADD ACCOUNT ================= -->
+<section class="screen" data-screen="8">
+  <div class="app-shell">
+    <aside class="navrail" data-navrail="accounts"></aside>
+    <div class="main">
+      <div class="page-pad">
+        <div class="form-card">
+          <h2>Add a custom IMAP/SMTP account</h2>
+          <p class="lead">Works with cPanel mailboxes, self-hosted servers, Zoho, Fastmail, and more.</p>
+          <div class="form-grid">
+            <div class="field full"><label>Display name</label><input placeholder="Support inbox"></div>
+            <div class="field full"><label>Email address</label><input placeholder="support@example.com"></div>
+            <div class="field"><label>IMAP host</label><input placeholder="imap.example.com"></div>
+            <div class="field"><label>IMAP port</label><input placeholder="993 (SSL)"></div>
+            <div class="field"><label>SMTP host</label><input placeholder="smtp.example.com"></div>
+            <div class="field"><label>SMTP port</label><input placeholder="465 (SSL)"></div>
+            <div class="field"><label>Username</label><input placeholder="support@example.com"></div>
+            <div class="field"><label>Password</label><input type="password" placeholder="app password"></div>
+            <div class="field full">
+              <label>Color tag</label>
+              <div class="color-swatches">
+                <div class="swatch selected" style="background:#F0954B"></div>
+                <div class="swatch" style="background:#8B7CF6"></div>
+                <div class="swatch" style="background:#34C7B8"></div>
+                <div class="swatch" style="background:#F1596E"></div>
+                <div class="swatch" style="background:#F0B84F"></div>
+              </div>
+            </div>
+          </div>
+          <div class="test-status"><svg class="ic-sm"><use href="#i-check"/></svg> Connection verified — 1,204 messages found in INBOX</div>
+          <div style="display:flex; gap:8px; margin-top:20px;">
+            <button class="btn primary">Save account</button>
+            <button class="btn ghost">Test connection</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const ACCOUNTS = [
+  { key:'ts', name:'Info · ThijssenSoftware', addr:'info@thijssensoftware.nl', color:'#F0954B', unread:4, provider:'IMAP / SMTP', status:'ok', synced:'2 min ago', initials:'TS' },
+  { key:'hm', name:'Hotmail', addr:'robbin_thijssen@hotmail.nl', color:'#8B7CF6', unread:0, provider:'Outlook', status:'error', synced:null, error:'Re-authentication needed', initials:'RT' },
+  { key:'gm', name:'ezomic@gmail.com', addr:'ezomic@gmail.com', color:'#34C7B8', unread:8, provider:'Gmail', status:'syncing', synced:null, initials:'EZ' },
+];
+
+function navHtml(active){
+  const items = [
+    ['inbox','i-inbox','Inbox', 12],
+    ['sent','i-sent','Sent', null],
+    ['drafts','i-draft','Drafts', 2],
+    ['trash','i-trash','Trash', null],
+    ['archived','i-archive','Archived', null],
+  ];
+  let html = `<div class="brand"><div class="brand-mark"><svg class="ic-sm" style="color:#fff"><use href="#i-inbox"/></svg></div><div class="brand-name">Mail</div></div>`;
+  html += `<div class="nav-search"><svg class="ic-sm"><use href="#i-search"/></svg><span>Search everything…</span><kbd>⌘K</kbd></div>`;
+  html += `<div class="nav-section">`;
+  items.forEach(([key,icon,label,count])=>{
+    const isActive = key===active;
+    html += `<a class="nav-item ${isActive?'active':''}"><svg class="ic"><use href="#${icon}"/></svg>${label}${count?`<span class="count">${count}</span>`:''}</a>`;
+  });
+  html += `<a class="nav-item warn ${active==='triage'?'active':''}"><svg class="ic"><use href="#i-sparkle"/></svg>Process Inbox<span class="count">6</span></a>`;
+  html += `</div>`;
+  html += `<button class="btn-compose"><svg class="ic-sm"><use href="#i-plus"/></svg>Compose</button>`;
+  html += `<div class="nav-section"><a class="nav-item ${active==='accounts'?'active':''}"><svg class="ic"><use href="#i-users"/></svg>Accounts</a></div>`;
+  html += `<div class="nav-label">Accounts</div><div class="nav-section">`;
+  ACCOUNTS.forEach(a=>{
+    html += `<a class="acct-row"><span class="acct-dot" style="background:${a.color}"></span><span class="name">${a.name}</span>${a.unread?`<span class="n">${a.unread}</span>`:''}</a>`;
+  });
+  html += `</div>`;
+  html += `<div class="navrail-foot">
+    <a class="nav-item" id="footThemeToggle"><svg class="ic"><use href="#i-sun"/></svg>Theme</a>
+    <a class="nav-item"><svg class="ic"><use href="#i-x"/></svg>Log out</a>
+  </div>`;
+  return html;
+}
+document.querySelectorAll('[data-navrail]').forEach(el=>{ el.innerHTML = navHtml(el.dataset.navrail); });
+
+// ---- thread list + reading pane (screen 2) ----
+const THREADS = [
+  { id:1, acc:'ts', from:'Vercel Billing', subj:'Q3 invoice — ThijssenSoftware ↔ Vercel', snippet:"Hi Robbin, your invoice for the Pro plan is attached. Total due: €20.00…", time:'9:14 AM', unread:true, count:2, initials:'VB' },
+  { id:2, acc:'gm', from:'ezomic', subj:'Photos from the weekend', snippet:'Finally got around to uploading these — the one at the lake is my favorite…', time:'Yesterday', unread:true, count:1, initials:'EZ' },
+  { id:3, acc:'hm', from:'Booking.com', subj:'Your reservation is confirmed', snippet:'Thanks for booking with us! Here is everything you need for your upcoming stay…', time:'Yesterday', unread:false, count:1, initials:'BK' },
+  { id:4, acc:'ts', from:'GitHub', subj:'[mail-app] 3 checks failed on your last push', snippet:'Your workflow run "CI" completed with failures. Two PHPUnit tests failed…', time:'Jul 5', unread:true, count:1, initials:'GH' },
+  { id:5, acc:'gm', from:'Spotify', subj:'Your 2026 mid-year listening recap', snippet:"You've spent 4,200 minutes listening this year. See your top artists…", time:'Jul 4', unread:false, count:1, initials:'SP' },
+];
+
+function renderThreadList(){
+  const list = document.getElementById('threadList');
+  if (!list) return;
+  list.innerHTML = THREADS.map((t,i)=>{
+    const acc = ACCOUNTS.find(a=>a.key===t.acc);
+    return `<div class="trow ${t.unread?'unread':''} ${i===0?'selected':''}" style="${t.unread?`--dot:${acc.color}`:''}" data-id="${t.id}" ${t.unread?`style=\"--x:1\"`:''}>
+      <div class="avatar" style="background:${acc.color}">${t.initials}</div>
+      <div class="trow-main">
+        <div class="trow-top"><span class="trow-from">${t.from}</span><span class="trow-time">${t.time}</span></div>
+        <div class="trow-subject">${t.subj}${t.count>1?`<span class="trow-badge">${t.count}</span>`:''}</div>
+        <div class="trow-snippet">${t.snippet}</div>
+      </div>
+    </div>`;
+  }).join('');
+  // apply unread left-bar color inline since CSS var scoping via attr is fiddly
+  list.querySelectorAll('.trow.unread').forEach((el,i)=>{
+    const t = THREADS[i]; const acc = ACCOUNTS.find(a=>a.key===t.acc);
+    el.style.setProperty('--accent-bar', acc.color);
+    el.style.boxShadow = 'none';
+    el.style.borderLeft = '3px solid ' + acc.color;
+    el.style.paddingLeft = '13px';
+  });
+  list.querySelectorAll('.trow').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      list.querySelectorAll('.trow').forEach(r=>r.classList.remove('selected'));
+      el.classList.add('selected');
+      renderReadingPane(parseInt(el.dataset.id));
+    });
+  });
+}
+
+function renderReadingPane(id){
+  const pane = document.getElementById('readingPane');
+  if (!pane) return;
+  const t = THREADS.find(x=>x.id===id) || THREADS[0];
+  const acc = ACCOUNTS.find(a=>a.key===t.acc);
+  pane.innerHTML = `
+    <div class="rp-header">
+      <div>
+        <h2>${t.subj}</h2>
+        <div class="rp-chips">
+          <div class="chip"><span class="dot" style="background:${acc.color}">${t.initials}</span>${t.from}</div>
+          <div class="chip" style="color:var(--text-faint)">via ${acc.addr}</div>
+        </div>
+      </div>
+      <div class="rp-actions">
+        <div class="icon-btn" title="Expand"><svg class="ic-sm"><use href="#i-expand"/></svg></div>
+        <div class="icon-btn" title="Archive"><svg class="ic-sm"><use href="#i-archive"/></svg></div>
+        <div class="icon-btn" title="Delete"><svg class="ic-sm"><use href="#i-trash"/></svg></div>
+        <div class="icon-btn" title="More"><svg class="ic-sm"><use href="#i-more"/></svg></div>
+      </div>
+    </div>
+    <div class="rp-body">
+      <div class="msg expanded">
+        <div class="msg-head">
+          <div class="avatar" style="background:${acc.color}; width:30px;height:30px;font-size:11px;">${t.initials}</div>
+          <div><span class="who">${t.from}</span> <span class="addr">&lt;${t.from.toLowerCase().replace(/\\s+/g,'.')}@mail.com&gt;</span></div>
+          <div class="when">${t.time}</div>
+        </div>
+        <div class="msg-body"><p>${t.snippet}</p><p>Let me know if you need anything else on this — happy to hop on a call this week too.</p></div>
+      </div>
+    </div>
+    <div class="rp-reply">
+      <div class="rp-reply-box">
+        <textarea placeholder="Reply to ${t.from}…"></textarea>
+        <div class="rp-reply-foot">
+          <button class="btn primary sm"><svg class="ic-sm"><use href="#i-reply"/></svg> Reply</button>
+          <div class="icon-btn"><svg class="ic-sm"><use href="#i-clip"/></svg></div>
+        </div>
+      </div>
+    </div>`;
+}
+renderThreadList();
+renderReadingPane(1);
+
+// ---- drafts list (screen 6) ----
+const DRAFTS = [
+  { acc:'ts', to:'sanne@vercel.com', subj:'Re: Q3 invoice — ThijssenSoftware ↔ Vercel', snippet:'Thanks, got it — forwarding to our bookkeeper now for Q3 reconciliation…', time:'12m ago', initials:'SV' },
+  { acc:'gm', to:'mom@family.nl', subj:'(no subject)', snippet:'Hey! Just wanted to check if you\'re still coming by this weekend…', time:'Yesterday', initials:'FM' },
+];
+const draftsList = document.getElementById('draftsList');
+if (draftsList){
+  draftsList.innerHTML = DRAFTS.map(d=>{
+    const acc = ACCOUNTS.find(a=>a.key===d.acc);
+    return `<div class="trow">
+      <div class="avatar" style="background:${acc.color}">${d.initials}</div>
+      <div class="trow-main">
+        <div class="trow-top"><span class="trow-from">To: ${d.to}</span><span class="trow-time">${d.time}</span></div>
+        <div class="trow-subject"><span class="pill warn" style="margin-right:6px;">Draft</span>${d.subj}</div>
+        <div class="trow-snippet">${d.snippet}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---- accounts grid (screen 7) ----
+const acctGrid = document.getElementById('acctGrid');
+if (acctGrid){
+  const statusMap = {
+    ok: `<span class="pill success"><svg class="ic-sm"><use href="#i-check"/></svg> Synced</span>`,
+    error: `<span class="pill danger"><svg class="ic-sm"><use href="#i-alert"/></svg> Error</span>`,
+    syncing: `<span class="pill warn"><svg class="ic-sm"><use href="#i-refresh"/></svg> Syncing…</span>`,
+  };
+  acctGrid.innerHTML = ACCOUNTS.map(a=>`
+    <div class="acct-card">
+      <div class="acct-card-top">
+        <div class="acct-ring" style="background:${a.color}">${a.initials}</div>
+        <div>
+          <div class="addr">${a.addr}</div>
+          <div class="provider">${a.provider}</div>
+        </div>
+      </div>
+      <div class="acct-status">
+        ${statusMap[a.status]}
+        <span style="color:var(--text-faint)">${a.synced ? '· synced ' + a.synced : (a.error ? '· ' + a.error : '')}</span>
+      </div>
+      <div class="acct-card-foot">
+        <button class="btn sm ghost"><svg class="ic-sm"><use href="#i-refresh"/></svg> Sync</button>
+        <button class="btn sm ghost"><svg class="ic-sm"><use href="#i-pencil"/></svg> Edit</button>
+        <button class="btn sm ghost danger" style="margin-left:auto;">Remove</button>
+      </div>
+    </div>`).join('');
+}
+
+// ---- deck tab switching ----
+document.querySelectorAll('.deck-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.deck-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelector(`.screen[data-screen="${tab.dataset.tab}"]`).classList.add('active');
+  });
+});
+
+// ---- theme toggle ----
+function setTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('#themeToggle, #footThemeToggle').forEach(()=>{});
+  const icon = t === 'dark' ? '#i-moon' : '#i-sun';
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.querySelector('use').setAttribute('href', icon);
+}
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const cur = document.documentElement.getAttribute('data-theme');
+  setTheme(cur === 'dark' ? 'light' : 'dark');
+});
+document.addEventListener('click', (e)=>{
+  if (e.target.closest('#footThemeToggle')){
+    const cur = document.documentElement.getAttribute('data-theme');
+    setTheme(cur === 'dark' ? 'light' : 'dark');
+  }
+});
+</script>
+</body>
+</html>

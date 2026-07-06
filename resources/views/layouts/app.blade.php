@@ -4,65 +4,34 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Mail')</title>
+    <title>@hasSection('title')@yield('title') &middot; @endif Zero</title>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#2563eb">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>.email-row.focused { box-shadow: inset 3px 0 0 #2563EB; background-color: #EFF6FF; }</style>
+    <meta name="theme-color" content="#7C6FF0">
+    <script>
+        (function () {
+            const stored = localStorage.getItem('theme');
+            document.documentElement.setAttribute('data-theme', stored === 'light' ? 'light' : 'dark');
+        })();
+    </script>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="bg-gray-50 text-gray-900">
-    <div class="min-h-screen flex">
-        <aside class="w-60 bg-white border-r border-gray-200 p-4 flex flex-col gap-1">
-            <a href="{{ route('inbox.index') }}" class="text-lg font-semibold mb-4">📬 Mail</a>
+<body>
+    @include('components.icon-sprite')
 
-            <a href="{{ route('inbox.index') }}" class="px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between">
-                <span>Inbox</span>
-                <span id="unread-badge" class="text-xs bg-blue-600 text-white rounded-full px-2 py-0.5 hidden"></span>
-            </a>
-            <a href="{{ route('inbox.index', ['folder' => 'SENT']) }}" class="px-3 py-2 rounded hover:bg-gray-100">Sent</a>
-            <a href="{{ route('drafts.index') }}" class="px-3 py-2 rounded hover:bg-gray-100">Drafts</a>
-            <a href="{{ route('inbox.index', ['folder' => 'TRASH']) }}" class="px-3 py-2 rounded hover:bg-gray-100">Trash</a>
-            <a href="{{ route('inbox.index', ['archived' => 1]) }}" class="px-3 py-2 rounded hover:bg-gray-100">Archived</a>
-            <a href="{{ route('triage.index') }}" class="px-3 py-2 rounded hover:bg-gray-100">🧹 Process Inbox</a>
-
-            <a href="{{ route('compose.create') }}" class="mt-2 px-3 py-2 rounded bg-blue-600 text-white text-center">Compose</a>
-            <a href="{{ route('accounts.index') }}" class="px-3 py-2 rounded hover:bg-gray-100">Accounts</a>
-
-            @auth
-                @php $sidebarAccounts = auth()->user()->mailAccounts()->get(); @endphp
-                @if ($sidebarAccounts->isNotEmpty())
-                    <div class="mt-4 pt-3 border-t text-xs uppercase tracking-wide text-gray-400 px-3">Accounts</div>
-                    <div class="flex flex-col gap-1">
-                        @foreach ($sidebarAccounts as $sidebarAccount)
-                            @php $sidebarUnread = $sidebarAccount->unreadCount(); @endphp
-                            <a href="{{ route('inbox.index', ['account' => $sidebarAccount->id]) }}" class="px-3 py-1.5 rounded hover:bg-gray-100 flex items-center gap-2 text-sm">
-                                <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: {{ $sidebarAccount->color }}"></span>
-                                <span class="truncate flex-1">{{ $sidebarAccount->display_name ?: $sidebarAccount->email_address }}</span>
-                                @if ($sidebarUnread > 0)
-                                    <span class="text-xs text-gray-400">{{ $sidebarUnread }}</span>
-                                @endif
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
-            @endauth
-
-            <div class="mt-auto flex flex-col gap-1">
-                <button onclick="document.getElementById('kb-help').classList.toggle('hidden')" class="px-3 py-2 rounded hover:bg-gray-100 w-full text-left text-sm text-gray-400">⌨ Shortcuts</button>
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <button class="px-3 py-2 rounded hover:bg-gray-100 w-full text-left text-sm text-gray-500">Log out</button>
-                </form>
-            </div>
+    <div class="app-shell">
+        <aside class="navrail">
+            <x-nav-rail/>
         </aside>
 
-        <main class="flex-1 p-6">
-            @if (session('status'))
-                <div class="mb-4 rounded bg-green-100 text-green-800 px-4 py-2 text-sm">{{ session('status') }}</div>
-            @endif
-            @if (session('error'))
-                <div class="mb-4 rounded bg-red-100 text-red-800 px-4 py-2 text-sm">{{ session('error') }}</div>
-            @endif
+        <main class="main">
+            <div style="padding: 14px 22px 0;">
+                @if (session('status'))
+                    <div class="flash success"><svg class="ic-sm"><use href="#i-check"/></svg>{{ session('status') }}</div>
+                @endif
+                @if (session('error'))
+                    <div class="flash error"><svg class="ic-sm"><use href="#i-alert"/></svg>{{ session('error') }}</div>
+                @endif
+            </div>
 
             @yield('content')
         </main>
@@ -73,6 +42,24 @@
             navigator.serviceWorker.register('/sw.js');
         }
     </script>
+
+    @auth
+        <script>
+            (function () {
+                function setTheme(theme) {
+                    document.documentElement.setAttribute('data-theme', theme);
+                    localStorage.setItem('theme', theme);
+                    const icon = document.getElementById('footThemeIcon');
+                    if (icon) icon.querySelector('use').setAttribute('href', theme === 'dark' ? '#i-moon' : '#i-sun');
+                }
+                document.getElementById('footThemeToggle')?.addEventListener('click', () => {
+                    const current = document.documentElement.getAttribute('data-theme');
+                    setTheme(current === 'dark' ? 'light' : 'dark');
+                });
+                setTheme(document.documentElement.getAttribute('data-theme'));
+            })();
+        </script>
+    @endauth
 
     @auth
         <script>
@@ -144,7 +131,10 @@
                     if (!banner) {
                         banner = document.createElement('div');
                         banner.id = 'new-mail-banner';
-                        banner.className = 'mb-3 px-4 py-2 rounded bg-blue-600 text-white text-sm cursor-pointer';
+                        banner.className = 'flash';
+                        banner.style.background = 'var(--accent-soft)';
+                        banner.style.color = 'var(--accent-text)';
+                        banner.style.cursor = 'pointer';
                         banner.onclick = () => banner.remove();
                         list.parentElement.insertBefore(banner, list);
                     }
@@ -297,11 +287,11 @@
         </script>
 
         {{-- Keyboard shortcut help overlay --}}
-        <div id="kb-help" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onclick="this.classList.add('hidden')">
-            <div class="bg-white rounded-lg shadow-xl p-6 w-80" onclick="event.stopPropagation()">
-                <h2 class="font-semibold mb-4">Keyboard shortcuts</h2>
-                <table class="w-full text-sm">
-                    <tbody class="divide-y">
+        <div id="kb-help" class="hidden" style="position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.5); align-items:center; justify-content:center;" onclick="this.classList.add('hidden')">
+            <div class="card" style="width:320px; padding:22px; box-shadow:var(--shadow);" onclick="event.stopPropagation()">
+                <h2 style="font-weight:700; font-size:15px; margin:0 0 14px;">Keyboard shortcuts</h2>
+                <table style="width:100%; font-size:12.5px; border-collapse:collapse;">
+                    <tbody>
                         @foreach ([
                             ['j / k', 'Move between conversations'],
                             ['Enter / o', 'Open focused conversation'],
@@ -319,14 +309,14 @@
                             ['ga', 'Go to Accounts'],
                             ['?', 'Toggle this help'],
                         ] as [$key, $desc])
-                            <tr class="py-1">
-                                <td class="py-1 pr-4 font-mono text-xs bg-gray-100 rounded px-1 text-center w-20">{{ $key }}</td>
-                                <td class="py-1 pl-3 text-gray-600">{{ $desc }}</td>
+                            <tr style="border-top:1px solid var(--border-soft);">
+                                <td style="padding:6px 10px 6px 0; width:74px;"><kbd style="border:1px solid var(--border); background:var(--bg-2); border-radius:4px; padding:1px 6px; font-size:10.5px; font-family:monospace;">{{ $key }}</kbd></td>
+                                <td style="padding:6px 0; color:var(--text-dim);">{{ $desc }}</td>
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
-                <button class="mt-4 text-xs text-gray-400 hover:text-gray-600" onclick="document.getElementById('kb-help').classList.add('hidden')">Close</button>
+                <button class="btn ghost sm" style="margin-top:14px;" onclick="document.getElementById('kb-help').classList.add('hidden')">Close</button>
             </div>
         </div>
     @endauth
@@ -334,30 +324,32 @@
     @yield('scripts')
 
     @auth
-        <div id="new-email-toast" class="hidden fixed bottom-4 right-4 z-50 max-w-sm bg-white border shadow-lg rounded-lg p-4 flex items-start gap-3 cursor-pointer" onclick="window.location.reload()">
-            <div class="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 mt-1.5"></div>
-            <div class="min-w-0">
-                <p class="text-sm font-medium" id="toast-from">New message</p>
-                <p class="text-sm text-gray-500 truncate" id="toast-subject"></p>
-                <p class="text-xs text-gray-400 mt-0.5">Click to refresh</p>
+        <div id="new-email-toast" class="hidden card" style="position:fixed; bottom:16px; right:16px; z-index:50; max-width:22rem; box-shadow:var(--shadow); padding:14px; align-items:flex-start; gap:10px; cursor:pointer;" onclick="window.location.reload()">
+            <div style="flex-shrink:0; width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:5px;"></div>
+            <div style="min-width:0;">
+                <p style="font-size:13px; font-weight:700; margin:0;" id="toast-from">New message</p>
+                <p style="font-size:12.5px; color:var(--text-dim); margin:2px 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="toast-subject"></p>
+                <p style="font-size:11px; color:var(--text-faint); margin:2px 0 0;">Click to refresh</p>
             </div>
-            <button class="flex-shrink-0 text-gray-300 hover:text-gray-500 ml-2" onclick="event.stopPropagation(); document.getElementById('new-email-toast').classList.add('hidden')">✕</button>
+            <button style="flex-shrink:0; color:var(--text-faint); background:none; border:none; margin-left:6px;" onclick="event.stopPropagation(); document.getElementById('new-email-toast').classList.add('hidden')">✕</button>
         </div>
 
         <script>
-            window.Echo.private('user.{{ auth()->id() }}')
-                .listen('.new-email', (e) => {
-                    // Update badge immediately — don't wait for the next poll.
-                    const badge = document.getElementById('unread-badge');
-                    const current = parseInt(badge?.textContent ?? '0', 10) || 0;
-                    if (window.updateUnreadBadge) window.updateUnreadBadge(current + 1);
+            document.addEventListener('DOMContentLoaded', function () {
+                window.Echo.private('user.{{ auth()->id() }}')
+                    .listen('.new-email', (e) => {
+                        // Update badge immediately — don't wait for the next poll.
+                        const badge = document.getElementById('unread-badge');
+                        const current = parseInt(badge?.textContent ?? '0', 10) || 0;
+                        if (window.updateUnreadBadge) window.updateUnreadBadge(current + 1);
 
-                    const toast = document.getElementById('new-email-toast');
-                    document.getElementById('toast-from').textContent = e.from_name || e.from_address;
-                    document.getElementById('toast-subject').textContent = e.subject;
-                    toast.classList.remove('hidden');
-                    setTimeout(() => toast.classList.add('hidden'), 8000);
-                });
+                        const toast = document.getElementById('new-email-toast');
+                        document.getElementById('toast-from').textContent = e.from_name || e.from_address;
+                        document.getElementById('toast-subject').textContent = e.subject;
+                        toast.classList.remove('hidden');
+                        setTimeout(() => toast.classList.add('hidden'), 8000);
+                    });
+            });
         </script>
     @endauth
 </body>

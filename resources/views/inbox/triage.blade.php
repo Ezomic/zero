@@ -3,104 +3,112 @@
 @section('title', 'Process Inbox')
 
 @section('content')
-    <div class="flex items-center justify-between mb-4">
-        <h1 class="text-xl font-semibold">Process Inbox</h1>
+    <div class="triage-wrap">
+        <div class="triage-progress">
+            <span style="font-weight:800; font-size:18px;">Process Inbox</span>
 
-        @if ($accounts->isNotEmpty())
-            <form method="GET" class="flex gap-2">
-                <select name="account" class="border rounded px-3 py-2 text-sm" onchange="this.form.submit()">
-                    @foreach ($accounts as $acc)
-                        <option value="{{ $acc->id }}" @selected($account && $account->id === $acc->id)>{{ $acc->email_address }}</option>
-                    @endforeach
-                </select>
-            </form>
-        @endif
-    </div>
-
-    @if (! $account)
-        <p class="text-gray-500">Connect an account first.</p>
-    @elseif (! $email)
-        <div class="bg-white rounded border p-10 text-center">
-            <p class="text-lg font-medium mb-1">📭 Inbox zero!</p>
-            <p class="text-gray-500 text-sm">Nothing left to process in {{ $account->email_address }}.</p>
-
-            @if ($skippedCount > 0)
-                <form method="POST" action="{{ route('triage.resetSkipped') }}" class="mt-4">
-                    @csrf
-                    <input type="hidden" name="account" value="{{ $account->id }}">
-                    <button class="text-sm underline text-gray-500">Show {{ $skippedCount }} skipped conversation(s) again</button>
+            @if ($accounts->isNotEmpty())
+                <form method="GET">
+                    <select name="account" onchange="this.form.submit()" style="padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-size:12.5px; font-weight:600;">
+                        @foreach ($accounts as $acc)
+                            <option value="{{ $acc->id }}" @selected($account && $account->id === $acc->id)>{{ $acc->email_address }}</option>
+                        @endforeach
+                    </select>
                 </form>
             @endif
         </div>
-    @else
-        <div class="flex items-center justify-between text-sm text-gray-500 mb-2">
-            <span>{{ $remaining }} conversation(s) left in Inbox</span>
-            @if ($skippedCount > 0)
-                <span>{{ $skippedCount }} skipped this session</span>
-            @endif
-        </div>
 
-        <div class="bg-white rounded border p-6">
-            <div class="flex items-center justify-between mb-1">
-                <div>
-                    <span class="font-semibold">{{ $email->from_name ?: $email->from_address }}</span>
-                    <span class="text-sm text-gray-500">&lt;{{ $email->from_address }}&gt;</span>
+        @if (! $account)
+            <p style="color:var(--text-faint);">Connect an account first.</p>
+        @elseif (! $email)
+            <div class="triage-empty">
+                <p style="font-size:16px; font-weight:700; margin:0 0 4px;">Inbox zero!</p>
+                <p style="font-size:13px; color:var(--text-faint); margin:0;">Nothing left to process in {{ $account->email_address }}.</p>
+
+                @if ($skippedCount > 0)
+                    <form method="POST" action="{{ route('triage.resetSkipped') }}" style="margin-top:16px;">
+                        @csrf
+                        <input type="hidden" name="account" value="{{ $account->id }}">
+                        <button class="btn sm ghost">Show {{ $skippedCount }} skipped conversation(s) again</button>
+                    </form>
+                @endif
+            </div>
+        @else
+            @php $dotCount = min($remaining, 12); @endphp
+            <div class="dots">
+                @for ($i = 0; $i < $dotCount; $i++)
+                    <i></i>
+                @endfor
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--text-dim); font-weight:700; margin:-8px 0 12px;">
+                <span>{{ $remaining }} left &middot; {{ $account->email_address }}</span>
+                @if ($skippedCount > 0)
+                    <span style="font-weight:600; color:var(--text-faint);">{{ $skippedCount }} skipped this session</span>
+                @endif
+            </div>
+
+            <div class="triage-card">
+                <div class="triage-card-top">
+                    <div>
+                        <div class="triage-from">{{ $email->from_name ?: $email->from_address }}</div>
+                        <div class="triage-addr">{{ $email->from_address }}</div>
+                    </div>
+                    <div class="pill neutral">{{ $email->sent_at?->format('M j, Y g:i A') }}</div>
                 </div>
-                <div class="text-xs text-gray-400">{{ $email->sent_at?->format('M j, Y g:i A') }}</div>
+
+                <div class="triage-subject">{{ $email->subject }}</div>
+
+                <div class="triage-preview">
+                    {!! $email->body_html ?: nl2br(e($email->body_text ?: '(no preview available)')) !!}
+                </div>
+
+                <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
+                    <a href="{{ route('inbox.show', $email) }}" style="font-size:12.5px; color:var(--text-faint); text-decoration:underline;">View full conversation &amp; reply</a>
+                </div>
             </div>
 
-            <div class="font-medium mb-4">{{ $email->subject }}</div>
-
-            <div class="prose max-w-none max-h-96 overflow-y-auto border-t pt-4">
-                {!! $email->body_html ?: nl2br(e($email->body_text ?: '(no preview available)')) !!}
-            </div>
-
-            <div class="mt-4 pt-4 border-t">
-                <a href="{{ route('inbox.show', $email) }}" class="text-sm text-gray-500 underline">View full conversation &amp; reply</a>
-            </div>
-        </div>
-
-        @if ($suggestedFolder)
-            <form method="POST" action="{{ route('triage.move', $email) }}" class="mt-4">
-                @csrf
-                <input type="hidden" name="folder" value="{{ $suggestedFolder }}">
-                <button class="w-full px-4 py-3 rounded bg-green-600 text-white font-medium text-left flex items-center justify-between" title="Shortcut: Enter">
-                    <span>✨ Suggested: mark read &amp; move to <strong>{{ \App\Models\MailFolder::displayName($suggestedFolder) }}</strong></span>
-                    <span class="text-xs opacity-75">based on mail from this sender</span>
-                </button>
-            </form>
-        @endif
-
-        <div class="mt-3 flex items-center gap-2">
-            <form method="POST" action="{{ route('triage.delete', $email) }}" onsubmit="return confirm('Delete this conversation?')">
-                @csrf
-                <button class="px-4 py-2 rounded border text-red-600 font-medium" title="Shortcut: D">Delete</button>
-            </form>
-
-            <form method="POST" action="{{ route('triage.move', $email) }}" class="flex gap-2">
-                @csrf
-                <select name="folder" class="border rounded px-3 py-2 text-sm" required>
-                    <option value="" disabled {{ $suggestedFolder ? '' : 'selected' }}>Move to…</option>
-                    @foreach ($folders as $f)
-                        <option value="{{ $f }}" @selected($f === $suggestedFolder)>{{ \App\Models\MailFolder::displayName($f) }}</option>
-                    @endforeach
-                </select>
-                <button class="px-4 py-2 rounded bg-blue-600 text-white font-medium">Mark read &amp; move</button>
-            </form>
-
-            <form method="POST" action="{{ route('triage.skip', $email) }}">
-                @csrf
-                <button class="px-4 py-2 rounded border text-gray-500" title="Shortcut: S">Skip for now</button>
-            </form>
-        </div>
-
-        <p class="text-xs text-gray-400 mt-3">
-            Keyboard shortcuts: <kbd>D</kbd> delete, <kbd>S</kbd> skip
             @if ($suggestedFolder)
-                , <kbd>Enter</kbd> accept suggestion
+                <form method="POST" action="{{ route('triage.move', $email) }}">
+                    @csrf
+                    <input type="hidden" name="folder" value="{{ $suggestedFolder }}">
+                    <button class="triage-suggest" title="Shortcut: Enter">
+                        <span>&#10024; Suggested: mark read &amp; move to {{ \App\Models\MailFolder::displayName($suggestedFolder) }}</span>
+                        <small>based on mail from this sender</small>
+                    </button>
+                </form>
             @endif
-        </p>
-    @endif
+
+            <div class="triage-actions">
+                <form method="POST" action="{{ route('triage.delete', $email) }}" onsubmit="return confirm('Delete this conversation?')">
+                    @csrf
+                    <button class="btn danger" title="Shortcut: D">Delete</button>
+                </form>
+
+                <form method="POST" action="{{ route('triage.skip', $email) }}">
+                    @csrf
+                    <button class="btn ghost" title="Shortcut: S">Skip</button>
+                </form>
+
+                <form method="POST" action="{{ route('triage.move', $email) }}" style="display:flex; gap:6px; flex:2;">
+                    @csrf
+                    <select name="folder" required style="flex:1; padding:0 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-size:13px;">
+                        <option value="" disabled {{ $suggestedFolder ? '' : 'selected' }}>Move to&hellip;</option>
+                        @foreach ($folders as $f)
+                            <option value="{{ $f }}" @selected($f === $suggestedFolder)>{{ \App\Models\MailFolder::displayName($f) }}</option>
+                        @endforeach
+                    </select>
+                    <button class="btn primary">Mark read &amp; move</button>
+                </form>
+            </div>
+
+            <p class="triage-key">
+                <kbd>D</kbd> delete &nbsp; <kbd>S</kbd> skip
+                @if ($suggestedFolder)
+                    &nbsp; <kbd>Enter</kbd> accept suggestion
+                @endif
+            </p>
+        @endif
+    </div>
 @endsection
 
 @section('scripts')
