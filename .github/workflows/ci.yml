@@ -70,5 +70,5 @@ jobs:
             npm ci
             npm run build
             php artisan migrate --force
-            sudo /usr/bin/supervisorctl restart mail-queue mail-scheduler mail-reverb mail-idle-10
+            sudo /usr/bin/supervisorctl restart mail-queue:* mail-scheduler:* mail-reverb:* mail-idle-10:*
             sudo /bin/systemctl reload php8.4-fpm
