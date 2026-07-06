@@ -95,4 +95,9 @@
             <a href="{{ route('accounts.index') }}" class="text-sm text-gray-500">Cancel</a>
         </div>
     </form>
+
+    <form method="POST" action="{{ route('accounts.sync', $account) }}" class="mt-4">
+        @csrf
+        <button class="px-4 py-2 rounded border">Sync now</button>
+    </form>
 @endsection
