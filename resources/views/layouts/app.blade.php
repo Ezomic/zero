@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Mail')</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2563eb">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>.email-row.focused { box-shadow: inset 3px 0 0 #2563EB; background-color: #EFF6FF; }</style>
 </head>
@@ -66,6 +68,12 @@
         </main>
     </div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
+
     @auth
         <script>
             (function () {
@@ -73,7 +81,7 @@
                 const INTERVAL_BACKGROUND = 5 * 60_000;
                 let timer = null;
 
-                function updateBadge(count) {
+                window.updateUnreadBadge = function updateBadge(count) {
                     const badge = document.getElementById('unread-badge');
                     if (!badge) return;
                     if (count > 0) {
@@ -85,7 +93,8 @@
                         badge.classList.add('hidden');
                         document.title = document.title.replace(/^\(\d+\+?\) /, '');
                     }
-                }
+                };
+                const updateBadge = window.updateUnreadBadge;
 
                 function poll() {
                     fetch('{{ route('inbox.unreadCount') }}', { headers: { 'Accept': 'application/json' } })
@@ -106,6 +115,78 @@
                 document.addEventListener('visibilitychange', () => {
                     if (!document.hidden) poll();
                     schedule();
+                });
+            })();
+        </script>
+
+        {{-- Live inbox: poll for new emails and inject them without a page reload --}}
+        <script>
+            (function () {
+                const list = document.getElementById('email-list');
+                if (!list) return;
+
+                let newestId = parseInt(list.dataset.newestId ?? '0', 10);
+
+                const params = new URLSearchParams(location.search);
+                const apiBase = '{{ route('inbox.newEmails') }}';
+
+                function buildUrl() {
+                    const p = new URLSearchParams();
+                    p.set('since', newestId);
+                    if (params.has('account')) p.set('account', params.get('account'));
+                    if (params.has('folder')) p.set('folder', params.get('folder'));
+                    if (params.has('archived')) p.set('archived', params.get('archived'));
+                    return apiBase + '?' + p.toString();
+                }
+
+                function showBanner(count) {
+                    let banner = document.getElementById('new-mail-banner');
+                    if (!banner) {
+                        banner = document.createElement('div');
+                        banner.id = 'new-mail-banner';
+                        banner.className = 'mb-3 px-4 py-2 rounded bg-blue-600 text-white text-sm cursor-pointer';
+                        banner.onclick = () => banner.remove();
+                        list.parentElement.insertBefore(banner, list);
+                    }
+                    banner.textContent = count + ' new message' + (count > 1 ? 's' : '') + ' — click to dismiss';
+                }
+
+                function pollNew() {
+                    fetch(buildUrl(), { headers: { 'Accept': 'application/json' } })
+                        .then((r) => r.json())
+                        .then(({ html, newest_id }) => {
+                            if (!html || html.length === 0) return;
+
+                            const empty = document.getElementById('empty-state');
+                            if (empty) empty.remove();
+
+                            const frag = document.createDocumentFragment();
+                            html.forEach((rowHtml) => {
+                                const div = document.createElement('div');
+                                div.innerHTML = rowHtml;
+                                while (div.firstChild) frag.appendChild(div.firstChild);
+                            });
+                            list.insertBefore(frag, list.firstChild);
+
+                            newestId = newest_id;
+                            showBanner(html.length);
+                        })
+                        .catch(() => {});
+                }
+
+                const INTERVAL_ACTIVE = 30_000;
+                const INTERVAL_BACKGROUND = 5 * 60_000;
+                let newMailTimer = null;
+
+                function scheduleNew() {
+                    clearInterval(newMailTimer);
+                    newMailTimer = setInterval(pollNew, document.hidden ? INTERVAL_BACKGROUND : INTERVAL_ACTIVE);
+                }
+
+                scheduleNew();
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) pollNew();
+                    scheduleNew();
                 });
             })();
         </script>
@@ -251,5 +332,33 @@
     @endauth
 
     @yield('scripts')
+
+    @auth
+        <div id="new-email-toast" class="hidden fixed bottom-4 right-4 z-50 max-w-sm bg-white border shadow-lg rounded-lg p-4 flex items-start gap-3 cursor-pointer" onclick="window.location.reload()">
+            <div class="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 mt-1.5"></div>
+            <div class="min-w-0">
+                <p class="text-sm font-medium" id="toast-from">New message</p>
+                <p class="text-sm text-gray-500 truncate" id="toast-subject"></p>
+                <p class="text-xs text-gray-400 mt-0.5">Click to refresh</p>
+            </div>
+            <button class="flex-shrink-0 text-gray-300 hover:text-gray-500 ml-2" onclick="event.stopPropagation(); document.getElementById('new-email-toast').classList.add('hidden')">✕</button>
+        </div>
+
+        <script>
+            window.Echo.private('user.{{ auth()->id() }}')
+                .listen('.new-email', (e) => {
+                    // Update badge immediately — don't wait for the next poll.
+                    const badge = document.getElementById('unread-badge');
+                    const current = parseInt(badge?.textContent ?? '0', 10) || 0;
+                    if (window.updateUnreadBadge) window.updateUnreadBadge(current + 1);
+
+                    const toast = document.getElementById('new-email-toast');
+                    document.getElementById('toast-from').textContent = e.from_name || e.from_address;
+                    document.getElementById('toast-subject').textContent = e.subject;
+                    toast.classList.remove('hidden');
+                    setTimeout(() => toast.classList.add('hidden'), 8000);
+                });
+        </script>
+    @endauth
 </body>
 </html>
