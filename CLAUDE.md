@@ -1,4 +1,4 @@
-# mail-app — Project context for Claude
+# zero — Project context for Claude
 
 ## What this is
 
@@ -20,7 +20,7 @@ instant new-mail delivery.
 
 ## Running locally
 
-App runs under **Herd** at `mail-app.test`. No `php artisan serve` needed.
+App runs under **Herd** at `zero.test`. No `php artisan serve` needed.
 
 ```bash
 php artisan migrate
@@ -32,8 +32,8 @@ All background processes run as **launchd agents** — no manual terminal needed
 
 ```bash
 ~/bin/workers status         # check all agents at a glance
-~/bin/workers restart mailapp  # restart after a deploy
-~/bin/workers logs mailapp   # tail all mailapp logs
+~/bin/workers restart zero    # restart after a deploy
+~/bin/workers logs zero       # tail all zero logs
 workers rotate               # rotate log files now
 ```
 
@@ -41,13 +41,13 @@ workers rotate               # rotate log files now
 
 | Agent label | What it runs |
 |---|---|
-| `nl.thijssensoftware.mailapp.scheduler` | `php artisan schedule:work` — dispatches `mail:sync` every 5 min |
-| `nl.thijssensoftware.mailapp.queue` | `php artisan queue:work --max-time=3600` — processes sync/send/flag jobs |
-| `nl.thijssensoftware.mailapp.reverb` | `php artisan reverb:start` — WebSocket server on port 8080 |
-| `nl.thijssensoftware.mailapp.idle.6` | `php artisan mail:idle 6` — IMAP IDLE for info@thijssensoftware.nl |
+| `nl.thijssensoftware.zero.scheduler` | `php artisan schedule:work` — dispatches `mail:sync` every 5 min |
+| `nl.thijssensoftware.zero.queue` | `php artisan queue:work --max-time=3600` — processes sync/send/flag jobs |
+| `nl.thijssensoftware.zero.reverb` | `php artisan reverb:start` — WebSocket server on port 8080 |
+| `nl.thijssensoftware.zero.idle.6` | `php artisan mail:idle 6` — IMAP IDLE for info@thijssensoftware.nl |
 
 Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
-`mailapp-{agent}.log`, capped at 5 MB / 5 files by `~/Library/Logs/newsyslog-workers.conf`.
+`zero-{agent}.log`, capped at 5 MB / 5 files by `~/Library/Logs/newsyslog-workers.conf`.
 
 ## Routes
 
