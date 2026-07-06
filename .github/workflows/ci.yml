@@ -70,5 +70,10 @@ jobs:
             npm ci
             npm run build
             php artisan migrate --force
-            sudo /usr/bin/supervisorctl restart mail-queue:* mail-scheduler:* mail-reverb:* mail-idle-10:*
+            sudo /usr/bin/supervisorctl restart mail-scheduler:* mail-reverb:* mail-idle-10:*
+            # mail-queue has stopwaitsecs=3600 so an in-flight IMAP sync can
+            # finish gracefully — don't block the deploy on that, let
+            # supervisor cycle it in the background on its own schedule.
+            nohup sudo /usr/bin/supervisorctl restart mail-queue:* > /tmp/mail-queue-restart.log 2>&1 &
+            disown
             sudo /bin/systemctl reload php8.4-fpm
