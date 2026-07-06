@@ -28,15 +28,83 @@ class InboxController extends Controller
      * Unified inbox: emails from every account the user owns, newest first,
      * collapsed to one row per conversation thread. Filter by ?account=ID
      * for a single mailbox (revealing that account's own folder tabs),
-     * ?folder=<name>, or ?archived=1.
+     * ?folder=<name>, or ?archived=1. ?open=<id> preloads that conversation
+     * into the inline reading pane (used when the AJAX panel-switch JS isn't
+     * available, or on direct navigation from elsewhere with a target thread).
      */
-    public function index(Request $request): View
+    public function index(Request $request, ImapSyncService $syncService): View
     {
-        $accountIds = auth()->user()->mailAccounts()->pluck('id');
         $selectedAccountId = $request->filled('account') ? $request->integer('account') : null;
         $availableFolders = $this->foldersFor($selectedAccountId);
         $folder = in_array($request->get('folder'), $availableFolders, true) ? $request->get('folder') : 'INBOX';
         $showArchived = $request->boolean('archived');
+
+        $viewData = $this->listData($selectedAccountId, $folder, $showArchived, $request->string('q')->toString() ?: null, $availableFolders);
+        $viewData['openThread'] = null;
+
+        if ($request->filled('open')) {
+            $openEmail = Email::find($request->integer('open'));
+
+            if ($openEmail && $openEmail->mailAccount->user_id === auth()->id()) {
+                $viewData['openThread'] = $this->openedThreadData($openEmail, $syncService);
+            }
+        }
+
+        return view('inbox.index', $viewData);
+    }
+
+    /**
+     * Deep-linkable single-conversation view: renders the same 3-pane inbox
+     * as index(), but with the list scoped to this email's own folder/
+     * account/archived state (so e.g. opening a Sent-folder email shows the
+     * Sent tab with it visible) and this conversation preloaded into the
+     * reading pane. Opening a conversation marks every message in it read,
+     * mirroring Gmail-style thread semantics, and lazily fetches the body of
+     * any message that hasn't been fetched yet (bulk sync only pulls headers).
+     */
+    public function show(Email $email, ImapSyncService $syncService): View
+    {
+        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+
+        $selectedAccountId = $email->mail_account_id;
+        $showArchived = $email->is_archived;
+        $folder = $email->folder;
+        $availableFolders = $this->foldersFor($selectedAccountId);
+
+        if (! $showArchived && ! in_array($folder, $availableFolders, true)) {
+            $availableFolders[] = $folder;
+        }
+
+        $viewData = $this->listData($selectedAccountId, $folder, $showArchived, null, $availableFolders);
+        $viewData['openThread'] = $this->openedThreadData($email, $syncService);
+
+        return view('inbox.index', $viewData);
+    }
+
+    /**
+     * AJAX endpoint behind the inline reading pane: returns just the
+     * reading-pane HTML fragment for $email, so the inbox list JS can swap
+     * threads in place instead of a full page navigation. Shares the exact
+     * same read/fetch-body side effects as show().
+     */
+    public function panel(Email $email, ImapSyncService $syncService): View
+    {
+        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+
+        return view('inbox._reading_pane', $this->openedThreadData($email, $syncService));
+    }
+
+    /**
+     * Builds the paginated thread list + its filter chrome for the given
+     * account/folder/archived/search scope. Shared by index() (request-
+     * driven filters) and show() (filters derived from the opened email).
+     *
+     * @param  array<int, string>  $availableFolders
+     * @return array<string, mixed>
+     */
+    protected function listData(?int $selectedAccountId, string $folder, bool $showArchived, ?string $q, array $availableFolders): array
+    {
+        $accountIds = auth()->user()->mailAccounts()->pluck('id');
 
         $base = Email::query()
             ->whereIn('mail_account_id', $accountIds)
@@ -52,8 +120,8 @@ class InboxController extends Controller
             $base->where('mail_account_id', $selectedAccountId);
         }
 
-        if ($request->filled('q')) {
-            $base->whereIn('id', $this->searchEmailIds($request->string('q')->toString(), $accountIds->all()));
+        if ($q) {
+            $base->whereIn('id', $this->searchEmailIds($q, $accountIds->all()));
         }
 
         // Collapse to the latest message per conversation thread.
@@ -76,29 +144,22 @@ class InboxController extends Controller
             ->groupBy('thread_id')
             ->pluck('cnt', 'thread_id');
 
-        $accounts = auth()->user()->mailAccounts()->get();
-
-        return view('inbox.index', [
+        return [
             'emails' => $emails,
-            'accounts' => $accounts,
+            'accounts' => auth()->user()->mailAccounts()->get(),
             'folder' => $folder,
             'showArchived' => $showArchived,
             'threadCounts' => $threadCounts,
             'folders' => $availableFolders,
             'selectedAccountId' => $selectedAccountId,
-        ]);
+        ];
     }
 
     /**
-     * Shows the full conversation thread that $email belongs to. Opening a
-     * conversation marks every message in it read, mirroring Gmail-style
-     * thread semantics, and lazily fetches the body of any message that
-     * hasn't been fetched yet (bulk sync only pulls headers).
+     * @return array<string, mixed>
      */
-    public function show(Email $email, ImapSyncService $syncService): View
+    protected function openedThreadData(Email $email, ImapSyncService $syncService): array
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
-
         $messages = $email->threadMessages()->get();
 
         foreach ($messages as $message) {
@@ -124,12 +185,12 @@ class InboxController extends Controller
             $suggestedFolder = null;
         }
 
-        return view('inbox.show', [
+        return [
             'messages' => $messages,
             'email' => $email,
             'availableFolders' => $availableFolders,
             'suggestedFolder' => $suggestedFolder,
-        ]);
+        ];
     }
 
     public function archive(Email $email): RedirectResponse

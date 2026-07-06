@@ -244,8 +244,12 @@
                         }
                         case 'Enter':
                         case 'o': {
-                            const href = focused?.querySelector('a')?.href;
-                            if (href) location.href = href;
+                            if (focused && window.__openInboxThread) {
+                                window.__openInboxThread(focused);
+                            } else {
+                                const href = focused?.querySelector('a')?.href;
+                                if (href) location.href = href;
+                            }
                             break;
                         }
                         case 'c':

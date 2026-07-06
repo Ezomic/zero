@@ -1,7 +1,7 @@
 @php
     $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $email->from_name ?: $email->from_address), 0, 2)) ?: '??';
 @endphp
-<div class="email-row trow {{ $email->is_read ? '' : 'unread' }}" data-email-id="{{ $email->id }}">
+<div class="email-row trow {{ $email->is_read ? '' : 'unread' }} {{ $email->id === ($openEmailId ?? null) ? 'selected' : '' }}" data-email-id="{{ $email->id }}">
     <input type="checkbox" name="ids[]" value="{{ $email->id }}" class="row-checkbox" form="bulk-form">
     <div class="avatar" style="background:{{ $email->mailAccount->color }}">{{ $initials }}</div>
     <a href="{{ route('inbox.show', $email) }}" class="trow-main">

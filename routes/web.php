@@ -23,6 +23,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/triage/reset-skipped', [TriageController::class, 'resetSkipped'])->name('triage.resetSkipped');
 
     Route::get('/emails/{email}', [InboxController::class, 'show'])->name('inbox.show');
+    Route::get('/emails/{email}/panel', [InboxController::class, 'panel'])->name('inbox.panel');
     Route::post('/emails/{email}/archive', [InboxController::class, 'archive'])->name('inbox.archive');
     Route::post('/emails/{email}/unarchive', [InboxController::class, 'unarchive'])->name('inbox.unarchive');
     Route::post('/emails/{email}/mark-unread', [InboxController::class, 'markUnread'])->name('inbox.markUnread');
