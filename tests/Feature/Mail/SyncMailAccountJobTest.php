@@ -7,6 +7,7 @@ use App\Models\MailAccount;
 use App\Models\User;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Mockery;
 use Tests\TestCase;
 
@@ -50,5 +51,15 @@ class SyncMailAccountJobTest extends TestCase
 
         $this->account->refresh();
         $this->assertSame('idle', $this->account->sync_status);
+    }
+
+    public function test_middleware_prevents_overlapping_jobs_for_the_same_account(): void
+    {
+        $job = new SyncMailAccountJob($this->account);
+        $middleware = $job->middleware();
+
+        $this->assertCount(1, $middleware);
+        $this->assertInstanceOf(WithoutOverlapping::class, $middleware[0]);
+        $this->assertSame((string) $this->account->id, $middleware[0]->key);
     }
 }
