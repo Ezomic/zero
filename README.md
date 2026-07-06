@@ -7,8 +7,8 @@ files only — merge them into a fresh Laravel install.
 ## 1. Create the base Laravel app
 
 ```bash
-composer create-project laravel/laravel mail-app
-cd mail-app
+composer create-project laravel/laravel zero
+cd zero
 ```
 
 Copy every file/folder from this package into the new project, matching
@@ -112,29 +112,29 @@ per active account. Both the scheduler and the queue worker must be running.
 
 Two launchd agents are set up in `~/Library/LaunchAgents/`:
 
-- `nl.thijssensoftware.mailapp.scheduler.plist` — runs `schedule:work`
-- `nl.thijssensoftware.mailapp.queue.plist` — runs `queue:work`
+- `nl.thijssensoftware.zero.scheduler.plist` — runs `schedule:work`
+- `nl.thijssensoftware.zero.queue.plist` — runs `queue:work`
 
 They start automatically at login and restart on crash. Logs:
 
 ```bash
-tail -f ~/Library/Logs/mailapp-scheduler.log
-tail -f ~/Library/Logs/mailapp-queue.log
+tail -f ~/Library/Logs/zero-scheduler.log
+tail -f ~/Library/Logs/zero-queue.log
 ```
 
 Useful commands:
 
 ```bash
 # Check both are running (should show two PIDs)
-launchctl list | grep mailapp
+launchctl list | grep zero
 
 # Restart after deploying code changes
-launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.mailapp.scheduler
-launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.mailapp.queue
+launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.zero.scheduler
+launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.zero.queue
 
 # Load/unload manually
-launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.scheduler.plist
-launchctl unload ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.scheduler.plist
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.scheduler.plist
+launchctl unload ~/Library/LaunchAgents/nl.thijssensoftware.zero.scheduler.plist
 ```
 
 ### Production — Supervisor + cron
@@ -181,10 +181,10 @@ Once auth is fixed for `robbin_thijssen@hotmail.nl` (account 7) and
 `ezomic@gmail.com` (account 8), create a launchd agent for each:
 
 ```bash
-# Copy nl.thijssensoftware.mailapp.idle.6.plist, change the label and
+# Copy nl.thijssensoftware.zero.idle.6.plist, change the label and
 # the account argument (6 → 7, 6 → 8), then:
-launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.idle.7.plist
-launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.idle.8.plist
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.idle.7.plist
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.idle.8.plist
 ```
 
 Add the new agent names to the `AGENTS` array in `~/bin/workers` and add
@@ -198,7 +198,7 @@ needs re-connecting via OAuth.
 
 The most likely reason previous attempts failed: the Azure app registration's
 redirect URI is set to `http://localhost:8000/auth/microsoft/callback` but the
-local app runs at `http://mail-app.test`. Add `http://mail-app.test/auth/microsoft/callback`
+local app runs at `http://zero.test`. Add `http://zero.test/auth/microsoft/callback`
 as an allowed redirect URI in the Azure portal (portal.azure.com →
 App registrations → your app → Authentication → Redirect URIs), then click
 "Connect Outlook / Hotmail" on the accounts page.

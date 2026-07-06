@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Feature toggles for mail-app.
+ * Feature toggles for zero.
  *
  * Each key is a feature name; each value is a boolean that can be overridden
  * via an environment variable of the same name, uppercased and prefixed with
