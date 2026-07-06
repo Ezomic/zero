@@ -26,10 +26,11 @@ class ApplyEmailFlagJob implements ShouldQueue
     public function __construct(
         protected Email $email,
         protected string $action,
+        protected ?string $sourceUid = null,
     ) {}
 
     public function handle(ImapSyncService $syncService): void
     {
-        $syncService->applyAction($this->email, $this->action);
+        $syncService->applyAction($this->email, $this->action, $this->sourceUid);
     }
 }

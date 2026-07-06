@@ -206,8 +206,15 @@ class ImapSyncService
      * syncs back to the mail server without blocking the request that
      * triggered it. $action is 'mark_read' | 'mark_unread' | 'delete' or
      * 'move:<local folder name>'.
+     *
+     * $sourceUid overrides $email->uid for locating the remote message.
+     * Needed for moves: the controller nulls the local uid column before
+     * dispatching (its old value could collide with an unrelated message
+     * already filed under the destination folder, since IMAP UIDs are only
+     * unique per-folder), so by the time this job runs $email->uid no
+     * longer reflects where the message actually sits on the server.
      */
-    public function applyAction(Email $email, string $action): void
+    public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
     {
         $account = $email->mailAccount;
         $remotePath = $email->remote_folder_path ?: $email->folder;
@@ -221,7 +228,7 @@ class ImapSyncService
             return;
         }
 
-        $message = $folder->messages()->getMessageByUid((int) $email->uid);
+        $message = $folder->messages()->getMessageByUid((int) ($sourceUid ?? $email->uid));
 
         if (str_starts_with($action, 'move:')) {
             $this->applyMove($email, $account, $message, substr($action, 5));

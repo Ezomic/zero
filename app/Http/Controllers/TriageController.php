@@ -118,8 +118,16 @@ class TriageController extends Controller
         abort_unless($targetExists, 422, 'Unknown target folder.');
 
         foreach ($this->threadEmails($email)->get() as $message) {
-            $message->update(['folder' => $data['folder'], 'is_read' => true]);
-            ApplyEmailFlagJob::dispatch($message, 'move:'.$data['folder']);
+            // The old uid was only ever valid within the source folder — IMAP
+            // UIDs aren't unique across folders, so keeping it here risks
+            // colliding with an unrelated message already filed under the
+            // destination folder. Null it locally (the job carries the old
+            // value separately so it can still find the real message) until
+            // ApplyEmailFlagJob's real move reports back the uid the message
+            // actually got in its destination.
+            $sourceUid = $message->uid;
+            $message->update(['folder' => $data['folder'], 'uid' => null, 'is_read' => true]);
+            ApplyEmailFlagJob::dispatch($message, 'move:'.$data['folder'], $sourceUid);
         }
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);
