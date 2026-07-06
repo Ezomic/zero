@@ -47,3 +47,28 @@ jobs:
 
       - name: Run tests
         run: php artisan test
+
+  deploy:
+    name: Deploy to production
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/deploy/mail
+            git fetch origin
+            git reset --hard origin/main
+            composer install --no-dev --optimize-autoloader --no-interaction
+            npm ci
+            npm run build
+            php artisan migrate --force
+            sudo /usr/bin/supervisorctl restart mail-queue mail-scheduler mail-reverb mail-idle-10
+            sudo /bin/systemctl reload php8.4-fpm
