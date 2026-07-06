@@ -298,7 +298,7 @@ class InboxController extends Controller
             ->groupBy('thread_id')
             ->pluck('cnt', 'thread_id');
 
-        $html = $emails->map(fn ($email) => view('inbox._email_row', compact('email', 'threadCounts'))->render());
+        $html = $emails->map(fn ($email) => view('inbox._email_row', ['email' => $email, 'threadCounts' => $threadCounts])->render());
 
         return response()->json([
             'html' => $html,

@@ -105,10 +105,45 @@ Gmail/Outlook or add a custom IMAP/SMTP mailbox.
 
 ## 6. Keep mailboxes syncing
 
-The scheduler snippet dispatches `mail:sync` every 5 minutes, which queues a
-sync job per active account. In production, run the Laravel scheduler via
-cron (`* * * * * php artisan schedule:run`) and keep `queue:work` running
-under Supervisor.
+The scheduler dispatches `mail:sync` every 5 minutes, which queues a sync job
+per active account. Both the scheduler and the queue worker must be running.
+
+### macOS (local dev) — launchd
+
+Two launchd agents are set up in `~/Library/LaunchAgents/`:
+
+- `nl.thijssensoftware.mailapp.scheduler.plist` — runs `schedule:work`
+- `nl.thijssensoftware.mailapp.queue.plist` — runs `queue:work`
+
+They start automatically at login and restart on crash. Logs:
+
+```bash
+tail -f ~/Library/Logs/mailapp-scheduler.log
+tail -f ~/Library/Logs/mailapp-queue.log
+```
+
+Useful commands:
+
+```bash
+# Check both are running (should show two PIDs)
+launchctl list | grep mailapp
+
+# Restart after deploying code changes
+launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.mailapp.scheduler
+launchctl kickstart -k gui/$(id -u)/nl.thijssensoftware.mailapp.queue
+
+# Load/unload manually
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.scheduler.plist
+launchctl unload ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.scheduler.plist
+```
+
+### Production — Supervisor + cron
+
+Run the scheduler via cron and the queue worker under Supervisor:
+
+```
+* * * * * php artisan schedule:run
+```
 
 You can also trigger a manual sync anytime from the Accounts page, or:
 
@@ -131,11 +166,39 @@ php artisan mail:sync --account=1
 
 ## Known limitations / next steps
 
-- Only `INBOX` is synced by default — extend `ImapSyncService::sync()` to
-  loop over `$client->getFolders()` for Sent/Drafts/Trash.
 - No reply/forward threading yet — `ComposeController` sends new messages
   only.
 - No attachment upload on compose yet — inbound attachments are stored and
   listed, but outbound attachments would need a file input + `Email::attach()`.
 - Gmail's OAuth consent screen stays in "Testing" mode (100 user cap) until
   you submit for verification — fine for personal/internal use.
+
+## TODOs
+
+### IMAP IDLE agents for accounts 7 and 8
+
+Once auth is fixed for `robbin_thijssen@hotmail.nl` (account 7) and
+`ezomic@gmail.com` (account 8), create a launchd agent for each:
+
+```bash
+# Copy nl.thijssensoftware.mailapp.idle.6.plist, change the label and
+# the account argument (6 → 7, 6 → 8), then:
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.idle.7.plist
+launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.mailapp.idle.8.plist
+```
+
+Add the new agent names to the `AGENTS` array in `~/bin/workers` and add
+rotation entries to `~/Library/Logs/newsyslog-workers.conf`.
+
+### Outlook OAuth (account 7 — robbin_thijssen@hotmail.nl)
+
+Microsoft deprecated basic IMAP auth. The OAuth flow is already built
+(`auth.microsoft.redirect` / `MicrosoftOAuthController`). The account just
+needs re-connecting via OAuth.
+
+The most likely reason previous attempts failed: the Azure app registration's
+redirect URI is set to `http://localhost:8000/auth/microsoft/callback` but the
+local app runs at `http://mail-app.test`. Add `http://mail-app.test/auth/microsoft/callback`
+as an allowed redirect URI in the Azure portal (portal.azure.com →
+App registrations → your app → Authentication → Redirect URIs), then click
+"Connect Outlook / Hotmail" on the accounts page.

@@ -30,6 +30,7 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/emails/{email}', [InboxController::class, 'destroy'])->name('inbox.destroy');
     Route::post('/emails/bulk', [InboxController::class, 'bulk'])->name('inbox.bulk');
     Route::get('/api/unread-count', [InboxController::class, 'unreadCount'])->name('inbox.unreadCount');
+    Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
 
     Route::get('/emails/{email}/reply', [ComposeController::class, 'reply'])->name('compose.reply');
     Route::get('/emails/{email}/reply-all', [ComposeController::class, 'replyAll'])->name('compose.replyAll');
@@ -51,6 +52,7 @@ Route::middleware(['auth'])->group(function () {
     Route::put('/accounts/{account}', [MailAccountController::class, 'update'])->name('accounts.update');
     Route::delete('/accounts/{account}', [MailAccountController::class, 'destroy'])->name('accounts.destroy');
     Route::post('/accounts/{account}/sync', [MailAccountController::class, 'sync'])->name('accounts.sync');
+    Route::post('/accounts/{account}/reenable', [MailAccountController::class, 'reenable'])->name('accounts.reenable');
 
     Route::get('/auth/google/redirect', [GoogleOAuthController::class, 'redirect'])->name('auth.google.redirect');
     Route::get('/auth/google/callback', [GoogleOAuthController::class, 'callback'])->name('auth.google.callback');

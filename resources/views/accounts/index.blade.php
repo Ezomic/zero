@@ -34,24 +34,34 @@
                         @if ($account->sync_status === 'error')
                             <span class="inline-flex items-center gap-1 text-red-600">
                                 <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                {{ $account->sync_error }}
+                                {{ $account->sync_error ?? 'Sync failed' }}
                             </span>
+                            @if ($account->sync_status_since)
+                                <span class="text-gray-400 ml-1">· {{ $account->sync_status_since->diffForHumans() }}</span>
+                            @endif
                         @elseif ($account->sync_status === 'syncing')
                             <span class="text-blue-600">Syncing…</span>
+                            @if ($account->sync_status_since)
+                                <span class="text-gray-400 ml-1">· since {{ $account->sync_status_since->diffForHumans() }}</span>
+                            @endif
                         @else
                             <span class="text-gray-400">
-                                Synced
                                 @if ($account->last_synced_at)
-                                    {{ $account->last_synced_at->diffForHumans() }}
+                                    Synced {{ $account->last_synced_at->diffForHumans() }}
                                 @else
-                                    never
+                                    Never synced
                                 @endif
                             </span>
                         @endif
                     </div>
                 </div>
                 <div class="flex gap-2 flex-shrink-0">
-                    @if ($account->sync_status === 'error')
+                    @if (! $account->is_active)
+                        <form method="POST" action="{{ route('accounts.reenable', $account) }}">
+                            @csrf
+                            <button class="text-sm px-3 py-1 rounded border border-orange-300 text-orange-600 font-medium">Re-enable</button>
+                        </form>
+                    @elseif ($account->sync_status === 'error')
                         @if ($account->provider === 'gmail')
                             <a href="{{ route('auth.google.redirect') }}" class="text-sm px-3 py-1 rounded border border-red-300 text-red-600 font-medium">Reconnect</a>
                         @elseif ($account->provider === 'outlook')
