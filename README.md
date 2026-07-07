@@ -190,6 +190,22 @@ launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.idle.8.plist
 Add the new agent names to the `AGENTS` array in `~/bin/workers` and add
 rotation entries to `~/Library/Logs/newsyslog-workers.conf`.
 
+### Removing an idle agent when an account is deleted
+
+Deleting a MailAccount does **not** automatically stop its watcher — run this
+by hand right after, on whichever host runs it:
+
+```bash
+php artisan mail:idle:deprovision {id}
+```
+
+Locally this unloads and removes the launchd plist for you. On production it
+prints the `[program:mail-idle-{id}]` block to remove from
+`/etc/supervisor/conf.d/mail.conf` plus the `supervisorctl reread`/`update`
+commands to run — it won't edit that file itself, since `mail-queue`,
+`mail-scheduler`, and `mail-reverb` are defined in the same file and a bad
+edit could take those down too.
+
 ### Outlook OAuth (account 7 — robbin_thijssen@hotmail.nl)
 
 Microsoft deprecated basic IMAP auth. The OAuth flow is already built

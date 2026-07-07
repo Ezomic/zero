@@ -85,10 +85,43 @@
                             @csrf
                             <button class="btn sm ghost"><svg class="ic-sm"><use href="#i-refresh"/></svg>Sync</button>
                         </form>
-                        <form method="POST" action="{{ route('accounts.destroy', $account) }}" onsubmit="return confirm('Remove this account?')" style="margin-left:auto;">
-                            @csrf @method('DELETE')
-                            <button class="btn sm ghost danger">Remove</button>
-                        </form>
+                        <div x-data="{ open: false, confirmText: '' }" style="margin-left:auto;">
+                            <button type="button" class="btn sm ghost danger" @click="open = true">Remove</button>
+
+                            <div x-show="open" class="backdrop" @click="open = false" style="z-index:60;"></div>
+                            <div
+                                x-show="open"
+                                style="position:fixed; inset:0; z-index:61; display:flex; align-items:center; justify-content:center; padding:16px;"
+                            >
+                                <div style="background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:20px; max-width:380px; width:100%;">
+                                    <h2 style="font-size:15px; font-weight:700; margin:0 0 6px;">Remove {{ $account->email_address }}?</h2>
+                                    <p style="font-size:13px; color:var(--text-dim); margin:0 0 12px;">
+                                        This permanently deletes all synced emails and folders for this account. There's no undo. Type the email address to confirm.
+                                    </p>
+
+                                    <form method="POST" action="{{ route('accounts.destroy', $account) }}">
+                                        @csrf @method('DELETE')
+                                        <input
+                                            type="text"
+                                            x-model="confirmText"
+                                            placeholder="{{ $account->email_address }}"
+                                            autocomplete="off"
+                                            class="btn"
+                                            style="width:100%; text-align:left; cursor:text; margin-bottom:14px;"
+                                        >
+                                        <div style="display:flex; justify-content:flex-end; gap:8px;">
+                                            <button type="button" class="btn sm ghost" @click="open = false; confirmText = ''">Cancel</button>
+                                            <button
+                                                type="submit"
+                                                class="btn sm danger"
+                                                :disabled="confirmText !== '{{ $account->email_address }}'"
+                                                :style="confirmText !== '{{ $account->email_address }}' ? 'opacity:.4; cursor:not-allowed;' : ''"
+                                            >Remove account</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             @empty

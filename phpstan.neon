@@ -19,3 +19,9 @@ parameters:
         - message: '#Access to an undefined property Laravel\\Socialite\\Contracts\\User::\$(refreshToken|token)#'
         - message: '#Using nullsafe method call on non-nullable type Webklex\\PHPIMAP\\Attribute#'
         - message: '#Expression on left side of \?\? is not nullable#'
+        # AccountWatchStoppedException is thrown from inside the callback passed to
+        # Webklex\PHPIMAP\Folder::idle(), which invokes it synchronously within its own
+        # while(true) loop (see vendor/webklex/php-imap/src/Folder.php). PHPStan can't see
+        # across that vendor call boundary, so it can't tell the surrounding try/catch is reachable.
+        - identifier: catch.neverThrown
+          path: app/Console/Commands/IdleMailboxCommand.php

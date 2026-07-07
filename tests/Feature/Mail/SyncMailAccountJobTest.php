@@ -62,4 +62,14 @@ class SyncMailAccountJobTest extends TestCase
         $this->assertInstanceOf(WithoutOverlapping::class, $middleware[0]);
         $this->assertSame((string) $this->account->id, $middleware[0]->key);
     }
+
+    public function test_job_is_silently_dropped_instead_of_failing_when_its_account_is_gone(): void
+    {
+        // Laravel's queue worker checks this property when SerializesModels can't
+        // re-resolve the account (because it was deleted between dispatch and
+        // execution) — true means the job is quietly discarded instead of failing.
+        $job = new SyncMailAccountJob($this->account);
+
+        $this->assertTrue($job->deleteWhenMissingModels);
+    }
 }

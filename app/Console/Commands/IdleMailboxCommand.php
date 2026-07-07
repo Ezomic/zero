@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Exceptions\AccountWatchStoppedException;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
 use App\Services\Mail\OAuthTokenRefresher;
@@ -22,12 +23,18 @@ class IdleMailboxCommand extends Command
             return self::SUCCESS;
         }
 
-        $account = MailAccount::findOrFail($this->argument('account'));
+        $account = MailAccount::find($this->argument('account'));
+
+        if (! $account) {
+            $this->info("Account {$this->argument('account')} no longer exists — exiting.");
+
+            return self::SUCCESS;
+        }
 
         if (! $account->is_active) {
-            $this->error("Account {$account->email_address} is inactive.");
+            $this->info("Account {$account->email_address} is inactive — exiting.");
 
-            return self::FAILURE;
+            return self::SUCCESS;
         }
 
         $this->info("Starting IMAP IDLE for {$account->email_address}…");
@@ -58,13 +65,35 @@ class IdleMailboxCommand extends Command
         // IDLE blocks until the server pushes a notification (new message,
         // flag change, expunge). We dispatch a sync job and immediately
         // re-enter IDLE — the sync handles deduplication, so triggering it
-        // on any IDLE event is safe. launchd restarts us if the connection
-        // drops or the server kicks us out after ~30 min.
-        $inbox->idle(function () use ($account) {
-            $this->line('['.now()->toTimeString().'] Activity on '.$account->email_address.' — queuing sync');
-            SyncMailAccountJob::dispatch($account);
-        });
+        // on any IDLE event is safe. launchd/supervisor restarts us if the
+        // connection drops or the server kicks us out after ~30 min.
+        //
+        // Folder::idle() runs its own internal while(true) loop and only
+        // ever returns via an exception, so re-checking the account once at
+        // startup isn't enough — the account could be deleted mid-session.
+        // We re-check on every wake and throw to break out cleanly instead
+        // of dispatching a job for a watched account that's gone.
+        try {
+            $inbox->idle(fn () => $this->onIdleWake($account));
+        } catch (AccountWatchStoppedException) {
+            $this->info("Account {$account->email_address} was deleted or deactivated — exiting.");
+
+            return self::SUCCESS;
+        }
 
         return self::SUCCESS;
+    }
+
+    /** @throws AccountWatchStoppedException */
+    private function onIdleWake(MailAccount $account): void
+    {
+        $current = MailAccount::find($account->id);
+
+        if (! $current || ! $current->is_active) {
+            throw new AccountWatchStoppedException;
+        }
+
+        $this->line('['.now()->toTimeString().'] Activity on '.$account->email_address.' — queuing sync');
+        SyncMailAccountJob::dispatch($account);
     }
 }

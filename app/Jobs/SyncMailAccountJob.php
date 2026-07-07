@@ -17,6 +17,13 @@ class SyncMailAccountJob implements ShouldQueue
 
     public int $tries = 3;
 
+    // The account may be deleted between dispatch and execution (e.g. via
+    // the accounts page, or IdleMailboxCommand queuing one right before the
+    // account is removed). SerializesModels can't re-resolve a deleted
+    // MailAccount; without this the job would fail loudly instead of simply
+    // no longer being needed.
+    public bool $deleteWhenMissingModels = true;
+
     // Headers-only bulk sync is much faster than a full-body fetch, but a
     // large mailbox (thousands of messages) can still take a while the first
     // time. Incremental runs (last_uid > 0) are fast; only the initial bulk
