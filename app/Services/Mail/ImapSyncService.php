@@ -31,6 +31,10 @@ use Webklex\PHPIMAP\Message;
  * (stored per folder in `mail_folders`), so they complete in milliseconds for
  * most runs. The first sync of a new account fetches everything and can be slow
  * for large mailboxes — that's why `SyncMailAccountJob::$timeout = 1800` (30 min).
+ * A first-time full sync fetches oldest-first in batches of
+ * `FULL_SYNC_CHUNK_SIZE`, checkpointing `last_uid` after every batch — if the
+ * job still times out on a very large mailbox, the next attempt resumes as an
+ * incremental sync from the last completed batch instead of starting over.
  *
  * ### IMAP IDLE (real-time push)
  * `mail:idle {account}` holds a persistent IDLE connection on the account's INBOX.
@@ -102,6 +106,13 @@ class ImapSyncService
     protected const AGGREGATE_FOLDER_MIN_ABSOLUTE_COUNT = 500;
 
     protected const AGGREGATE_FOLDER_SHARE_THRESHOLD = 0.5;
+
+    /** A first-time full sync fetches a folder's messages in batches of this
+     *  size (oldest-first) instead of one blocking call for everything.
+     *  `last_uid` is checkpointed after every batch, so a job that times out
+     *  mid-folder resumes as an incremental sync from the last completed
+     *  batch on the next attempt instead of starting over from scratch. */
+    protected const FULL_SYNC_CHUNK_SIZE = 200;
 
     public function __construct(
         protected OAuthTokenRefresher $tokenRefresher,
@@ -383,7 +394,6 @@ class ImapSyncService
 
     protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
     {
-        $query = $folder->messages()->setFetchBody(false)->limit($limit)->fetchOrderDesc();
         $incremental = false;
 
         if ($folderRecord->last_uid > 0) {
@@ -403,94 +413,134 @@ class ImapSyncService
             }
         }
 
-        // whereUidGreaterOrEqual() isn't supported by the installed
-        // webklex/php-imap version — getByUidGreaterOrEqual() filters the
-        // folder's UID list client-side instead.
-        $messages = $incremental
-            ? $query->getByUidGreaterOrEqual($folderRecord->last_uid + 1)
-            : $query->all()->get();
         $highestUid = $folderRecord->last_uid;
 
-        foreach ($messages as $message) {
-            $uid = (string) $message->getUid();
-            $numericUid = (int) $uid;
+        if ($incremental) {
+            // Small, bounded set of new messages since last sync — one fetch
+            // is fine, no need to checkpoint mid-way.
+            // whereUidGreaterOrEqual() isn't supported by the installed
+            // webklex/php-imap version — getByUidGreaterOrEqual() filters the
+            // folder's UID list client-side instead.
+            $messages = $folder->messages()->setFetchBody(false)->limit($limit)->fetchOrderDesc()
+                ->getByUidGreaterOrEqual($folderRecord->last_uid + 1);
 
-            if ($numericUid > $highestUid) {
-                $highestUid = $numericUid;
+            foreach ($messages as $message) {
+                $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));
             }
+        } else {
+            // First-time full sync: a large mailbox can have thousands of
+            // messages, and fetching them all in one blocking call risks
+            // never finishing within the job's timeout. Fetch oldest-first in
+            // small batches instead, checkpointing `last_uid` after each one.
+            // If the job times out partway through, the next attempt resumes
+            // as an ordinary incremental sync from the last completed batch —
+            // no progress is lost, and nothing is skipped.
+            $query = $folder->messages()->setFetchBody(false)->fetchOrderAsc();
+            $processed = 0;
+            $page = 1;
 
-            $existing = Email::where('mail_account_id', $account->id)
-                ->where('folder', $folderName)
-                ->where('uid', $uid)
-                ->first();
+            do {
+                $batch = $query->limit(self::FULL_SYNC_CHUNK_SIZE, $page)->get();
 
-            if ($existing) {
-                // Reconcile read flag — catches messages read on another device
-                // since last sync.
-                $serverIsRead = $message->getFlags()->has('Seen');
-                if ($existing->is_read !== $serverIsRead) {
-                    $existing->update(['is_read' => $serverIsRead]);
+                foreach ($batch as $message) {
+                    $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: false));
                 }
 
-                continue;
-            }
+                $processed += $batch->count();
+                $page++;
 
-            $messageId = $message->getMessageId()?->toString() ?: null;
-            [$inReplyTo, $references] = $this->threadingHeaders($message);
-            $threadId = $references[0] ?? $inReplyTo ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
-
-            $fromAddress = $message->getFrom()[0]->mail ?? null;
-            $fromName = $message->getFrom()[0]->personal ?? null;
-            $toAddresses = $this->addressesToArray($message->getTo()?->toArray());
-            $ccAddresses = $this->addressesToArray($message->getCc()?->toArray());
-
-            $subject = $message->getSubject()->toString() ?: '(no subject)';
-            $sentAt = $message->getDate()?->toDate();
-            $isRead = $message->getFlags()->has('Seen');
-
-            Email::create([
-                'mail_account_id' => $account->id,
-                'message_id' => $messageId,
-                'thread_id' => $threadId,
-                'in_reply_to' => $inReplyTo,
-                'references_header' => $references ? implode(' ', $references) : null,
-                'folder' => $folderName,
-                'remote_folder_path' => $folder->full_name ?? $folder->path,
-                'uid' => $uid,
-                'subject' => $subject,
-                'from_address' => $fromAddress,
-                'from_name' => $fromName,
-                'to_addresses' => $toAddresses,
-                'cc_addresses' => $ccAddresses,
-                'body_html' => null,
-                'body_text' => null,
-                'is_read' => $isRead,
-                'has_attachments' => false,
-                'sent_at' => $sentAt,
-            ]);
-
-            if ($folderName === 'INBOX' && ! $isRead && $folderRecord->last_uid > 0) {
-                broadcast(new NewEmailArrived(
-                    userId: $account->user_id,
-                    emailId: 0,
-                    folder: $folderName,
-                    fromAddress: $fromAddress ?? '',
-                    fromName: $fromName,
-                    subject: $subject,
-                    sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
-                ));
-
-                if (config('features.macos_notifications')) {
-                    $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+                if ($highestUid > $folderRecord->last_uid) {
+                    $folderRecord->update(['last_uid' => $highestUid]);
                 }
-            }
-
-            $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
+            } while ($batch->count() === self::FULL_SYNC_CHUNK_SIZE && $processed < $limit);
         }
 
         if ($highestUid > $folderRecord->last_uid) {
             $folderRecord->update(['last_uid' => $highestUid]);
         }
+    }
+
+    /**
+     * Inserts a message if it's new (or reconciles its read flag if we
+     * already have it) and returns its numeric UID. $broadcastNew controls
+     * whether a genuinely new unread INBOX message fires the real-time
+     * notification — false during a first-time full sync, since that would
+     * flood the UI with years of old mail.
+     */
+    protected function storeMessage(MailAccount $account, Folder $folder, string $folderName, Message $message, bool $broadcastNew): int
+    {
+        $uid = (string) $message->getUid();
+        $numericUid = (int) $uid;
+
+        $existing = Email::where('mail_account_id', $account->id)
+            ->where('folder', $folderName)
+            ->where('uid', $uid)
+            ->first();
+
+        if ($existing) {
+            // Reconcile read flag — catches messages read on another device
+            // since last sync.
+            $serverIsRead = $message->getFlags()->has('Seen');
+            if ($existing->is_read !== $serverIsRead) {
+                $existing->update(['is_read' => $serverIsRead]);
+            }
+
+            return $numericUid;
+        }
+
+        $messageId = $message->getMessageId()?->toString() ?: null;
+        [$inReplyTo, $references] = $this->threadingHeaders($message);
+        $threadId = $references[0] ?? $inReplyTo ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
+
+        $fromAddress = $message->getFrom()[0]->mail ?? null;
+        $fromName = $message->getFrom()[0]->personal ?? null;
+        $toAddresses = $this->addressesToArray($message->getTo()?->toArray());
+        $ccAddresses = $this->addressesToArray($message->getCc()?->toArray());
+
+        $subject = $message->getSubject()->toString() ?: '(no subject)';
+        $sentAt = $message->getDate()?->toDate();
+        $isRead = $message->getFlags()->has('Seen');
+
+        Email::create([
+            'mail_account_id' => $account->id,
+            'message_id' => $messageId,
+            'thread_id' => $threadId,
+            'in_reply_to' => $inReplyTo,
+            'references_header' => $references ? implode(' ', $references) : null,
+            'folder' => $folderName,
+            'remote_folder_path' => $folder->full_name ?? $folder->path,
+            'uid' => $uid,
+            'subject' => $subject,
+            'from_address' => $fromAddress,
+            'from_name' => $fromName,
+            'to_addresses' => $toAddresses,
+            'cc_addresses' => $ccAddresses,
+            'body_html' => null,
+            'body_text' => null,
+            'is_read' => $isRead,
+            'has_attachments' => false,
+            'sent_at' => $sentAt,
+        ]);
+
+        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew) {
+            broadcast(new NewEmailArrived(
+                userId: $account->user_id,
+                emailId: 0,
+                folder: $folderName,
+                fromAddress: $fromAddress ?? '',
+                fromName: $fromName,
+                subject: $subject,
+                sentAt: $sentAt->toISOString(),
+            ));
+
+            if (config('features.macos_notifications')) {
+                $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
+            }
+        }
+
+        $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
+
+        return $numericUid;
     }
 
     /**
