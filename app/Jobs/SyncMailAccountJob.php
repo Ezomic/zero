@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
 class SyncMailAccountJob implements ShouldQueue
@@ -33,6 +34,23 @@ class SyncMailAccountJob implements ShouldQueue
     public function __construct(
         protected MailAccount $account,
     ) {}
+
+    // The scheduler dispatches a job for every active account every 5
+    // minutes regardless of whether a previous job for that account is
+    // still queued or running. Without this, a single account whose sync
+    // takes longer than 5 minutes (e.g. the initial bulk fetch of a large
+    // mailbox) piles up duplicate jobs indefinitely. dontRelease() drops the
+    // duplicate instead of requeuing it; expireAfter() is a failsafe so a
+    // crashed worker can't leave the lock stuck forever.
+    /** @return array<int, object> */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping((string) $this->account->id))
+                ->dontRelease()
+                ->expireAfter($this->timeout + 60),
+        ];
+    }
 
     public function handle(ImapSyncService $syncService): void
     {
