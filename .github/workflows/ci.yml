@@ -48,32 +48,7 @@ jobs:
       - name: Run tests
         run: php artisan test
 
-  deploy:
-    name: Deploy to production
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_SSH_HOST }}
-          username: ${{ secrets.DEPLOY_SSH_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
-            cd /home/deploy/mail
-            git fetch origin
-            git reset --hard origin/main
-            composer install --no-dev --optimize-autoloader --no-interaction
-            npm ci
-            npm run build
-            php artisan migrate --force
-            sudo /usr/bin/supervisorctl restart mail-scheduler:* mail-reverb:* mail-idle-10:*
-            # mail-queue has stopwaitsecs=3600 so an in-flight IMAP sync can
-            # finish gracefully — don't block the deploy on that, let
-            # supervisor cycle it in the background on its own schedule.
-            nohup sudo /usr/bin/supervisorctl restart mail-queue:* > /tmp/mail-queue-restart.log 2>&1 &
-            disown
-            sudo /bin/systemctl reload php8.4-fpm
+# Deployment lives solely in deploy.yml (bash scripts/deploy.sh): maintenance
+# mode, cache rebuild, and a smoke test, none of which this job did. Having
+# both workflows deploy on the same push raced each other against the same
+# server directory and corrupted bootstrap/cache/routes-v7.php mid-deploy.
