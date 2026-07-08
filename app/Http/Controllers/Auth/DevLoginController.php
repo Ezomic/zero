@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 
 /**
  * Skips typing credentials during local development. The route this serves
@@ -20,7 +19,6 @@ class DevLoginController extends Controller
             ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
-                'password' => Hash::make('password'),
                 'email_verified_at' => now(),
             ]
         );

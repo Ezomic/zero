@@ -7,6 +7,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DraftController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
+use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\TriageController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +61,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/auth/microsoft/redirect', [MicrosoftOAuthController::class, 'redirect'])->name('auth.microsoft.redirect');
     Route::get('/auth/microsoft/callback', [MicrosoftOAuthController::class, 'callback'])->name('auth.microsoft.callback');
+
+    Route::get('/security', [SecurityController::class, 'show'])->name('security.show');
 });
 
 require __DIR__.'/auth.php';

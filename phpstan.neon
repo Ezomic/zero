@@ -6,6 +6,8 @@ parameters:
     paths:
         - app
 
+    parseModelCastsMethod: true
+
     parallel:
         maximumNumberOfProcesses: 1
         processTimeout: 300.0

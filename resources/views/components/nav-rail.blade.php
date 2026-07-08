@@ -77,6 +77,9 @@
 @endif
 
 <div class="navrail-foot">
+    <a href="{{ route('security.show') }}" class="nav-item {{ request()->routeIs('security.show') ? 'active' : '' }}">
+        <svg class="ic"><use href="#i-check"/></svg>Security
+    </a>
     <button type="button" class="nav-item" id="footThemeToggle">
         <svg class="ic" id="footThemeIcon"><use href="#i-moon"/></svg>Theme
     </button>
