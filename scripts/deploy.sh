@@ -132,7 +132,13 @@ ok "Caches rebuilt"
 # on those.
 step "Fixing permissions"
 find storage bootstrap/cache -user "$(id -un)" -exec chmod 755 {} + 2>/dev/null || true
-chmod 664 database/database.sqlite 2>/dev/null || true
+chmod 664 database/database.sqlite database/database.sqlite-wal database/database.sqlite-shm 2>/dev/null || true
+chgrp www-data database/database.sqlite database/database.sqlite-wal database/database.sqlite-shm 2>/dev/null || true
+# setgid on the database dir: the supervisor programs below run as `deploy`,
+# not www-data, so every WAL/SHM file they recreate on restart would otherwise
+# land group=deploy and be unwritable by PHP-FPM (www-data) — this made every
+# deploy a coin flip for whether sessions/writes started 500ing afterward.
+chmod g+s database
 ok "Permissions set"
 
 # ── 9. Restart services ───────────────────────────────────────────────────────
@@ -141,8 +147,16 @@ sudo systemctl reload php8.4-fpm
 ok "PHP-FPM reloaded"
 
 step "Restarting mail-app supervisor programs"
-sudo supervisorctl restart mail-queue:* mail-scheduler:* mail-reverb:* mail-idle-10:* > /dev/null
-ok "Queue, scheduler, Reverb, and IMAP IDLE restarted"
+sudo supervisorctl restart mail-scheduler:* mail-reverb:* mail-idle-10:* > /dev/null
+ok "Scheduler, Reverb, and IMAP IDLE restarted"
+
+# mail-queue has stopwaitsecs=3600 so an in-flight IMAP sync can finish
+# gracefully — don't block the deploy on that (a past deploy hung here for
+# the full SSH command timeout and got killed before reaching maintenance
+# mode being lifted). Let supervisor cycle it in the background instead.
+nohup sudo supervisorctl restart mail-queue:* > /tmp/mail-queue-restart.log 2>&1 &
+disown
+ok "Queue worker restart triggered in the background"
 
 # ── 10. Back online ───────────────────────────────────────────────────────────
 step "Disabling maintenance mode"
