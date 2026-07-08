@@ -90,7 +90,7 @@ return [
     |
     */
 
-    'management_middleware' => ['auth'],
+    'management_middleware' => ['password.confirm'],
 
     /*
     |--------------------------------------------------------------------------

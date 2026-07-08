@@ -61,6 +61,16 @@
                 errorEl.style.display = 'flex';
             }
 
+            function redirectIfConfirmationRequired(res) {
+                if (res.status === 423) {
+                    window.location = '{{ route('password.confirm') }}';
+
+                    return true;
+                }
+
+                return false;
+            }
+
             addBtn.addEventListener('click', async () => {
                 errorEl.style.display = 'none';
 
@@ -71,6 +81,7 @@
                     const optionsRes = await fetch('{{ route('passkey.registration-options') }}', {
                         headers: { Accept: 'application/json' },
                     });
+                    if (redirectIfConfirmationRequired(optionsRes)) return;
                     if (! optionsRes.ok) throw new Error();
                     const { options } = await optionsRes.json();
 
@@ -86,6 +97,7 @@
                         },
                         body: JSON.stringify({ name, credential: credential.toJSON() }),
                     });
+                    if (redirectIfConfirmationRequired(storeRes)) return;
                     if (! storeRes.ok) throw new Error();
 
                     window.location.reload();
@@ -108,6 +120,7 @@
                                 'X-CSRF-TOKEN': csrfToken,
                             },
                         });
+                        if (redirectIfConfirmationRequired(res)) return;
                         if (! res.ok) throw new Error();
 
                         document.querySelector(`[data-passkey-row="${id}"]`).remove();
