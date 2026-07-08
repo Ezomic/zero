@@ -435,7 +435,7 @@ class ImapSyncService
             // If the job times out partway through, the next attempt resumes
             // as an ordinary incremental sync from the last completed batch —
             // no progress is lost, and nothing is skipped.
-            $query = $folder->messages()->setFetchBody(false)->fetchOrderAsc();
+            $query = $folder->messages()->all()->setFetchBody(false)->fetchOrderAsc();
             $processed = 0;
             $page = 1;
 
