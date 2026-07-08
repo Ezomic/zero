@@ -435,24 +435,27 @@ class ImapSyncService
             // If the job times out partway through, the next attempt resumes
             // as an ordinary incremental sync from the last completed batch —
             // no progress is lost, and nothing is skipped.
-            $query = $folder->messages()->all()->setFetchBody(false)->fetchOrderAsc();
-            $processed = 0;
-            $page = 1;
+            //
+            // Uses the library's own chunked() helper rather than a manual
+            // limit($page)->get() loop: chunked() issues one IMAP SEARCH up
+            // front and reuses it for every page, whereas a manual loop
+            // re-runs the full SEARCH on every single chunk — redundant, and
+            // confirmed in production to be what was actually stalling chunk
+            // 2+ out to the job's 30-minute timeout on a real mailbox.
+            //
+            // all() sets the "ALL" search criteria — without it the query has
+            // no criteria at all and the server rejects it with "Missing
+            // search parameters" (see THI-292).
+            $folder->messages()->all()->setFetchBody(false)->fetchOrderAsc()
+                ->chunked(function ($batch) use ($account, $folder, $folderName, $folderRecord, &$highestUid) {
+                    foreach ($batch as $message) {
+                        $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: false));
+                    }
 
-            do {
-                $batch = $query->limit(self::FULL_SYNC_CHUNK_SIZE, $page)->get();
-
-                foreach ($batch as $message) {
-                    $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: false));
-                }
-
-                $processed += $batch->count();
-                $page++;
-
-                if ($highestUid > $folderRecord->last_uid) {
-                    $folderRecord->update(['last_uid' => $highestUid]);
-                }
-            } while ($batch->count() === self::FULL_SYNC_CHUNK_SIZE && $processed < $limit);
+                    if ($highestUid > $folderRecord->last_uid) {
+                        $folderRecord->update(['last_uid' => $highestUid]);
+                    }
+                }, self::FULL_SYNC_CHUNK_SIZE);
         }
 
         if ($highestUid > $folderRecord->last_uid) {
