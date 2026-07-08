@@ -26,6 +26,17 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --quiet
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
       - name: Copy .env
         run: cp .env.example .env
 
