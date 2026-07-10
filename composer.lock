@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "14d4e87e5108f3a1519911fda180f80a",
+    "content-hash": "8c74f7c1ff1d3509215b2f4f6fe47509",
     "packages": [
         {
             "name": "brick/math",
@@ -8113,6 +8113,43 @@
                 }
             ],
             "time": "2026-06-09T10:54:51+00:00"
+        },
+        {
+            "name": "thijssensoftware/id-client",
+            "version": "0.1.0",
+            "dist": {
+                "type": "path",
+                "url": "../../id-client",
+                "reference": "3b5d20a25538096a6c046ed0b7972b71990030db"
+            },
+            "require": {
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "laravel/socialite": "^5.0",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^9.0|^10.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Thijssensoftware\\IdClient\\IdClientServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Thijssensoftware\\IdClient\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Client for signing in workflow apps against Thijssensoftware ID (SSO).",
+            "transport-options": {
+                "relative": true
+            }
         },
         {
             "name": "tijsverkoyen/css-to-inline-styles",

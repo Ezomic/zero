@@ -4,6 +4,12 @@
 
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
+    <a href="{{ route('sso.redirect') }}" class="btn primary" style="display:block; width:100%; text-align:center; text-decoration:none; box-sizing:border-box;">
+        {{ __('Sign in with Thijssensoftware') }}
+    </a>
+
+    <div class="login-divider">or</div>
+
     <div id="passkey-error" class="field-error" style="display:none; margin-bottom:14px;"></div>
 
     <button type="button" id="passkey-login-btn" class="btn primary" style="width:100%;">
