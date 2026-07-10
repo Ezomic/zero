@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8c74f7c1ff1d3509215b2f4f6fe47509",
+    "content-hash": "b99f45d99e7edee440144a81a1f5c783",
     "packages": [
         {
             "name": "brick/math",
@@ -8117,10 +8117,16 @@
         {
             "name": "thijssensoftware/id-client",
             "version": "0.1.0",
-            "dist": {
-                "type": "path",
-                "url": "../../id-client",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Ezomic/id-client.git",
                 "reference": "3b5d20a25538096a6c046ed0b7972b71990030db"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Ezomic/id-client/zipball/3b5d20a25538096a6c046ed0b7972b71990030db",
+                "reference": "3b5d20a25538096a6c046ed0b7972b71990030db",
+                "shasum": ""
             },
             "require": {
                 "illuminate/support": "^11.0|^12.0|^13.0",
@@ -8147,9 +8153,11 @@
                 "proprietary"
             ],
             "description": "Client for signing in workflow apps against Thijssensoftware ID (SSO).",
-            "transport-options": {
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/Ezomic/id-client/tree/v0.1.0",
+                "issues": "https://github.com/Ezomic/id-client/issues"
+            },
+            "time": "2026-07-10T00:58:22+00:00"
         },
         {
             "name": "tijsverkoyen/css-to-inline-styles",
