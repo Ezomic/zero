@@ -111,8 +111,14 @@ class ImapSyncService
      *  size (oldest-first) instead of one blocking call for everything.
      *  `last_uid` is checkpointed after every batch, so a job that times out
      *  mid-folder resumes as an incremental sync from the last completed
-     *  batch on the next attempt instead of starting over from scratch. */
-    protected const FULL_SYNC_CHUNK_SIZE = 200;
+     *  batch on the next attempt instead of starting over from scratch.
+     *  Kept small deliberately: a single batched IMAP FETCH for headers can
+     *  still be very slow on some accounts (observed 6-8s/message on one
+     *  production Gmail account, likely server-side throttling) — a large
+     *  chunk risks the job's 30-minute timeout killing it mid-fetch before
+     *  even one batch checkpoints, which loses the entire attempt's
+     *  progress. */
+    protected const FULL_SYNC_CHUNK_SIZE = 25;
 
     public function __construct(
         protected OAuthTokenRefresher $tokenRefresher,
