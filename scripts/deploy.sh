@@ -3,7 +3,7 @@
 # deploy.sh — deploy latest code to the production server
 #
 # Run ON the server (as the deploy user):
-#   cd /home/deploy/mail && bash scripts/deploy.sh
+#   cd /home/deploy/zero && bash scripts/deploy.sh
 #
 # Run FROM your local machine:
 #   bash scripts/deploy.sh --remote deploy@your-server
@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/home/deploy/mail}"
+APP_DIR="${APP_DIR:-/home/deploy/zero}"
 PHP="${PHP:-php}"
 
 # ── Remote mode ───────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]]; then
   ok "GET $APP_URL/ → $HTTP_CODE"
 else
   echo "  ✗ GET $APP_URL/ → $HTTP_CODE" >&2
-  echo "  Check /var/log/nginx/mail-error.log and storage/logs/laravel.log" >&2
+  echo "  Check /var/log/nginx/zero-error.log and storage/logs/laravel.log" >&2
   exit 1
 fi
 
