@@ -59,4 +59,4 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd /home/deploy/mail && bash scripts/deploy.sh
+            cd /home/deploy/zero && bash scripts/deploy.sh
