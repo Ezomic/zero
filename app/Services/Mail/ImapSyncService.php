@@ -510,7 +510,7 @@ class ImapSyncService
         $sentAt = $message->getDate()?->toDate();
         $isRead = $message->getFlags()->has('Seen');
 
-        Email::create([
+        $email = Email::create([
             'mail_account_id' => $account->id,
             'message_id' => $messageId,
             'thread_id' => $threadId,
@@ -534,7 +534,7 @@ class ImapSyncService
         if ($folderName === 'INBOX' && ! $isRead && $broadcastNew) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
-                emailId: 0,
+                emailId: $email->id,
                 folder: $folderName,
                 fromAddress: $fromAddress ?? '',
                 fromName: $fromName,

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Mail;
 
+use App\Events\NewEmailArrived;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\User;
@@ -9,6 +10,7 @@ use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Mockery;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
@@ -139,5 +141,17 @@ class ImapSyncServiceStoreMessageTest extends TestCase
 
         $this->assertSame(504, $uid);
         $this->assertDatabaseHas('emails', ['uid' => '504']);
+    }
+
+    public function test_broadcast_carries_the_real_email_id_not_a_hardcoded_zero(): void
+    {
+        Event::fake([NewEmailArrived::class]);
+
+        $message = $this->makeMessage(uid: 505, isRead: false);
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: true);
+
+        $email = Email::where('mail_account_id', $this->account->id)->where('uid', '505')->firstOrFail();
+
+        Event::assertDispatched(NewEmailArrived::class, fn (NewEmailArrived $event) => $event->emailId === $email->id && $event->emailId !== 0);
     }
 }
