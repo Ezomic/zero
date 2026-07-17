@@ -37,6 +37,12 @@ class IdleMailboxCommand extends Command
             return self::SUCCESS;
         }
 
+        if ($account->provider === MailAccount::PROVIDER_OUTLOOK) {
+            $this->warn("Account {$account->email_address} is Outlook — reads via Microsoft Graph, which has no IMAP IDLE equivalent. Exiting.");
+
+            return self::SUCCESS;
+        }
+
         $this->info("Starting IMAP IDLE for {$account->email_address}…");
 
         $cm = new ClientManager;

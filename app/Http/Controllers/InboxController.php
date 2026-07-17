@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
+use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +34,7 @@ class InboxController extends Controller
      * into the inline reading pane (used when the AJAX panel-switch JS isn't
      * available, or on direct navigation from elsewhere with a target thread).
      */
-    public function index(Request $request, ImapSyncService $syncService): View
+    public function index(Request $request, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
         $selectedAccountId = $request->filled('account') ? $request->integer('account') : null;
         $availableFolders = $this->foldersFor($selectedAccountId);
@@ -46,7 +48,7 @@ class InboxController extends Controller
             $openEmail = Email::find($request->integer('open'));
 
             if ($openEmail && $openEmail->mailAccount->user_id === auth()->id()) {
-                $viewData['openThread'] = $this->openedThreadData($openEmail, $syncService);
+                $viewData['openThread'] = $this->openedThreadData($openEmail, $imapSyncService, $graphMailSyncService);
             }
         }
 
@@ -62,7 +64,7 @@ class InboxController extends Controller
      * mirroring Gmail-style thread semantics, and lazily fetches the body of
      * any message that hasn't been fetched yet (bulk sync only pulls headers).
      */
-    public function show(Email $email, ImapSyncService $syncService): View
+    public function show(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
         abort_unless($email->mailAccount->user_id === auth()->id(), 403);
 
@@ -76,7 +78,7 @@ class InboxController extends Controller
         }
 
         $viewData = $this->listData($selectedAccountId, $folder, $showArchived, null, $availableFolders);
-        $viewData['openThread'] = $this->openedThreadData($email, $syncService);
+        $viewData['openThread'] = $this->openedThreadData($email, $imapSyncService, $graphMailSyncService);
 
         return view('inbox.index', $viewData);
     }
@@ -87,11 +89,11 @@ class InboxController extends Controller
      * threads in place instead of a full page navigation. Shares the exact
      * same read/fetch-body side effects as show().
      */
-    public function panel(Email $email, ImapSyncService $syncService): View
+    public function panel(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
         abort_unless($email->mailAccount->user_id === auth()->id(), 403);
 
-        return view('inbox._reading_pane', $this->openedThreadData($email, $syncService));
+        return view('inbox._reading_pane', $this->openedThreadData($email, $imapSyncService, $graphMailSyncService));
     }
 
     /**
@@ -158,9 +160,10 @@ class InboxController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function openedThreadData(Email $email, ImapSyncService $syncService): array
+    protected function openedThreadData(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): array
     {
         $messages = $email->threadMessages()->get();
+        $syncService = $email->mailAccount->provider === MailAccount::PROVIDER_OUTLOOK ? $graphMailSyncService : $imapSyncService;
 
         foreach ($messages as $message) {
             if ($message->body_html === null && $message->body_text === null) {

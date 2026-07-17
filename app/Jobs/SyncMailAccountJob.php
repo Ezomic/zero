@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\MailAccount;
+use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -59,13 +60,19 @@ class SyncMailAccountJob implements ShouldQueue
         ];
     }
 
-    public function handle(ImapSyncService $syncService): void
+    public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
     {
         if (! $this->account->is_active) {
             return;
         }
 
-        $syncService->sync($this->account);
+        if ($this->account->provider === MailAccount::PROVIDER_OUTLOOK) {
+            $graphMailSyncService->sync($this->account);
+
+            return;
+        }
+
+        $imapSyncService->sync($this->account);
     }
 
     public function failed(\Throwable $e): void
@@ -92,6 +99,7 @@ class SyncMailAccountJob implements ShouldQueue
         return str_contains($message, 'authenticate')
             || str_contains($message, 'application-specific password')
             || str_contains($message, 'invalid credentials')
-            || str_contains($message, 'authentication failed');
+            || str_contains($message, 'authentication failed')
+            || str_contains($message, 'token refresh failed');
     }
 }
