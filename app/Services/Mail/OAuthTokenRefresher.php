@@ -57,7 +57,7 @@ class OAuthTokenRefresher
             'client_secret' => config('services.microsoft.client_secret'),
             'refresh_token' => $account->oauth_refresh_token,
             'grant_type' => 'refresh_token',
-            'scope' => 'offline_access https://outlook.office365.com/IMAP.AccessAsUser.All https://outlook.office365.com/SMTP.Send',
+            'scope' => 'offline_access Mail.ReadWrite Mail.Send',
         ]);
 
         if ($response->failed()) {

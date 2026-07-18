@@ -5,6 +5,7 @@ namespace Tests\Feature\Mail;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
 use App\Models\User;
+use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -43,14 +44,40 @@ class SyncMailAccountJobTest extends TestCase
     {
         $this->account->update(['is_active' => false, 'sync_status' => 'idle']);
 
-        $service = Mockery::mock(ImapSyncService::class);
-        $service->shouldNotReceive('sync');
+        $imapService = Mockery::mock(ImapSyncService::class);
+        $imapService->shouldNotReceive('sync');
+        $graphService = Mockery::mock(GraphMailSyncService::class);
+        $graphService->shouldNotReceive('sync');
 
         $job = new SyncMailAccountJob($this->account);
-        $job->handle($service);
+        $job->handle($imapService, $graphService);
 
         $this->account->refresh();
         $this->assertSame('idle', $this->account->sync_status);
+    }
+
+    public function test_outlook_account_routes_to_graph_mail_sync_service(): void
+    {
+        $this->account->update(['provider' => MailAccount::PROVIDER_OUTLOOK]);
+
+        $imapService = Mockery::mock(ImapSyncService::class);
+        $imapService->shouldNotReceive('sync');
+        $graphService = Mockery::mock(GraphMailSyncService::class);
+        $graphService->shouldReceive('sync')->once()->with($this->account);
+
+        $job = new SyncMailAccountJob($this->account);
+        $job->handle($imapService, $graphService);
+    }
+
+    public function test_non_outlook_account_routes_to_imap_sync_service(): void
+    {
+        $imapService = Mockery::mock(ImapSyncService::class);
+        $imapService->shouldReceive('sync')->once()->with($this->account);
+        $graphService = Mockery::mock(GraphMailSyncService::class);
+        $graphService->shouldNotReceive('sync');
+
+        $job = new SyncMailAccountJob($this->account);
+        $job->handle($imapService, $graphService);
     }
 
     public function test_middleware_prevents_overlapping_jobs_for_the_same_account(): void

@@ -21,8 +21,8 @@ class MicrosoftOAuthController extends Controller
                 'email',
                 'profile',
                 'offline_access',
-                'https://outlook.office365.com/IMAP.AccessAsUser.All',
-                'https://outlook.office365.com/SMTP.Send',
+                'Mail.ReadWrite',
+                'Mail.Send',
             ])
             ->redirect();
     }

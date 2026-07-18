@@ -6,6 +6,7 @@ use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +22,7 @@ use Illuminate\View\View;
  */
 class TriageController extends Controller
 {
-    public function index(Request $request, ImapSyncService $syncService): View
+    public function index(Request $request, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
         $accounts = auth()->user()->mailAccounts()->where('is_active', true)->get();
         /** @var MailAccount|null $account */
@@ -58,6 +59,7 @@ class TriageController extends Controller
 
             if ($email && $email->body_html === null && $email->body_text === null) {
                 try {
+                    $syncService = $account->provider === MailAccount::PROVIDER_OUTLOOK ? $graphMailSyncService : $imapSyncService;
                     $syncService->fetchBody($email);
                     $email->refresh();
                 } catch (\Throwable) {

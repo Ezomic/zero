@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Email;
+use App\Models\MailAccount;
+use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,8 +31,14 @@ class ApplyEmailFlagJob implements ShouldQueue
         protected ?string $sourceUid = null,
     ) {}
 
-    public function handle(ImapSyncService $syncService): void
+    public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
     {
-        $syncService->applyAction($this->email, $this->action, $this->sourceUid);
+        if ($this->email->mailAccount->provider === MailAccount::PROVIDER_OUTLOOK) {
+            $graphMailSyncService->applyAction($this->email, $this->action, $this->sourceUid);
+
+            return;
+        }
+
+        $imapSyncService->applyAction($this->email, $this->action, $this->sourceUid);
     }
 }
