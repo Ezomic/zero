@@ -59,12 +59,20 @@ class ImapSyncServiceStoreMessageTest extends TestCase
         Mockery::close();
     }
 
-    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject'): Message
+    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null): Message
     {
         $message = Mockery::mock(Message::class);
         $message->shouldReceive('getUid')->andReturn($uid);
         $message->shouldReceive('getFlags')->andReturn(new FlagCollection($isRead ? ['Seen' => 'Seen'] : []));
-        $message->shouldReceive('getMessageId')->andReturn(null);
+        $message->shouldReceive('getMessageId')->andReturn($messageId === null ? null : new class($messageId)
+        {
+            public function __construct(private string $messageId) {}
+
+            public function toString(): string
+            {
+                return $this->messageId;
+            }
+        });
         $message->shouldReceive('getInReplyTo')->andReturn(null);
         $message->shouldReceive('getReferences')->andReturn(null);
         $message->shouldReceive('getFrom')->andReturn([new Address((object) ['mail' => 'sender@example.com', 'personal' => 'Sender Name'])]);
@@ -141,6 +149,37 @@ class ImapSyncServiceStoreMessageTest extends TestCase
 
         $this->assertSame(504, $uid);
         $this->assertDatabaseHas('emails', ['uid' => '504']);
+    }
+
+    public function test_a_new_message_gets_a_generated_ulid(): void
+    {
+        $message = $this->makeMessage(uid: 601, isRead: false);
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: false);
+
+        $email = Email::where('mail_account_id', $this->account->id)->where('uid', '601')->firstOrFail();
+
+        $this->assertNotNull($email->ulid);
+        $this->assertSame(26, strlen($email->ulid));
+    }
+
+    public function test_the_same_message_moved_to_another_folder_reuses_its_ulid(): void
+    {
+        $inInbox = $this->makeMessage(uid: 602, isRead: false, messageId: '<shared@example.com>');
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $inInbox, broadcastNew: false);
+        $original = Email::where('mail_account_id', $this->account->id)->where('uid', '602')->firstOrFail();
+
+        // Simulate an out-of-band move: the same message reappears in a
+        // different folder with a different UID on the next sync.
+        $archiveFolder = Mockery::mock(Folder::class);
+        $archiveFolder->full_name = 'Archive';
+        $archiveFolder->path = 'Archive';
+        $inArchive = $this->makeMessage(uid: 999, isRead: false, messageId: '<shared@example.com>');
+        $this->service->callStoreMessage($this->account, $archiveFolder, 'Archive', $inArchive, broadcastNew: false);
+
+        $moved = Email::where('mail_account_id', $this->account->id)->where('uid', '999')->firstOrFail();
+
+        $this->assertNotSame($original->id, $moved->id);
+        $this->assertSame($original->ulid, $moved->ulid);
     }
 
     public function test_broadcast_carries_the_real_email_id_not_a_hardcoded_zero(): void

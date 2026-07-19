@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Email;
 use App\Models\MailAccount;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 /**
  * @extends Factory<Email>
@@ -17,6 +18,7 @@ class EmailFactory extends Factory
     {
         return [
             'mail_account_id' => MailAccount::factory(),
+            'ulid' => (string) Str::ulid(),
             'message_id' => $this->faker->unique()->uuid().'@example.com',
             'thread_id' => $this->faker->uuid(),
             'folder' => 'INBOX',

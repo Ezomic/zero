@@ -23,6 +23,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/triage/{email}/skip', [TriageController::class, 'skip'])->name('triage.skip');
     Route::post('/triage/reset-skipped', [TriageController::class, 'resetSkipped'])->name('triage.resetSkipped');
 
+    // Must precede /emails/{email} so "ref" isn't bound as an email id.
+    Route::get('/emails/ref/{ulid}', [InboxController::class, 'showByRef'])->name('inbox.showByUlid');
     Route::get('/emails/{email}', [InboxController::class, 'show'])->name('inbox.show');
     Route::get('/emails/{email}/panel', [InboxController::class, 'panel'])->name('inbox.panel');
     Route::post('/emails/{email}/archive', [InboxController::class, 'archive'])->name('inbox.archive');

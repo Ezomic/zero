@@ -14,8 +14,20 @@ class Email extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        // A ULID is a durable, folder-independent identity for the message,
+        // used by other apps to deep-link back to it. The sync service reuses
+        // an existing row's ULID when the same message reappears in another
+        // folder, so only generate one when none was supplied.
+        static::creating(function (Email $email): void {
+            $email->ulid ??= (string) Str::ulid();
+        });
+    }
+
     protected $fillable = [
         'mail_account_id',
+        'ulid',
         'message_id',
         'thread_id',
         'in_reply_to',

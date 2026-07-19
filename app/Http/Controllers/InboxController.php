@@ -84,6 +84,25 @@ class InboxController extends Controller
     }
 
     /**
+     * Resolves a durable cross-app mail link (/emails/ref/{ulid}) to the live
+     * message and redirects to its canonical view. A message that was moved
+     * between folders can exist as several rows sharing one ULID (plus stale
+     * orphans from out-of-band moves); latest('id') picks the most recent
+     * live row, so the link survives folder moves.
+     */
+    public function showByRef(string $ulid): RedirectResponse
+    {
+        $email = Email::where('ulid', $ulid)
+            ->where('is_deleted', false)
+            ->latest('id')
+            ->firstOrFail();
+
+        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+
+        return redirect()->route('inbox.show', $email);
+    }
+
+    /**
      * AJAX endpoint behind the inline reading pane: returns just the
      * reading-pane HTML fragment for $email, so the inbox list JS can swap
      * threads in place instead of a full page navigation. Shares the exact

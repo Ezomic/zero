@@ -498,6 +498,16 @@ class ImapSyncService
         }
 
         $messageId = $message->getMessageId()?->toString() ?: null;
+
+        // Reuse the ULID of the same logical message already stored in another
+        // folder, so a moved message keeps one durable identity across folders
+        // instead of every folder copy getting its own.
+        $ulid = $messageId
+            ? Email::where('mail_account_id', $account->id)
+                ->where('message_id', $messageId)
+                ->value('ulid')
+            : null;
+
         [$inReplyTo, $references] = $this->threadingHeaders($message);
         $threadId = $references[0] ?? $inReplyTo ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
 
@@ -512,6 +522,7 @@ class ImapSyncService
 
         $email = Email::create([
             'mail_account_id' => $account->id,
+            'ulid' => $ulid,
             'message_id' => $messageId,
             'thread_id' => $threadId,
             'in_reply_to' => $inReplyTo,
