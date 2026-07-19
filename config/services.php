@@ -53,4 +53,9 @@ return [
         'redirect' => env('MICROSOFT_REDIRECT_URI', '/auth/microsoft/callback'),
     ],
 
+    'calendar' => [
+        'url' => env('CALENDAR_URL', 'https://chronos.test'),
+        'token' => env('CALENDAR_API_TOKEN'),
+    ],
+
 ];

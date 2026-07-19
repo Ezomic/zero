@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\GoogleOAuthController;
 use App\Http\Controllers\Auth\MicrosoftOAuthController;
+use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ComposeController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DraftController;
@@ -35,6 +36,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/emails/bulk', [InboxController::class, 'bulk'])->name('inbox.bulk');
     Route::get('/api/unread-count', [InboxController::class, 'unreadCount'])->name('inbox.unreadCount');
     Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
+
+    Route::post('/emails/{email}/calendar-event', [CalendarEventController::class, 'store'])->name('inbox.calendarEvent');
 
     Route::get('/emails/{email}/reply', [ComposeController::class, 'reply'])->name('compose.reply');
     Route::get('/emails/{email}/reply-all', [ComposeController::class, 'replyAll'])->name('compose.replyAll');

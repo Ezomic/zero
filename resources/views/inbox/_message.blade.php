@@ -41,5 +41,41 @@
         <a href="{{ route('compose.reply', $message) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-reply"/></svg>Reply</a>
         <a href="{{ route('compose.replyAll', $message) }}" class="btn sm ghost">Reply All</a>
         <a href="{{ route('compose.forward', $message) }}" class="btn sm ghost">Forward</a>
+        @if (config('services.calendar.token'))
+            <button type="button" class="btn sm ghost" x-on:click="$dispatch('open-modal', 'cal-{{ $message->id }}')"><svg class="ic-sm"><use href="#i-calendar"/></svg>Create event</button>
+        @endif
     </div>
+
+    @if (config('services.calendar.token'))
+        @php
+            $eventStart = \Illuminate\Support\Carbon::now()->addHour()->startOfHour();
+        @endphp
+        <x-modal name="cal-{{ $message->id }}" maxWidth="md" focusable>
+            <form method="POST" action="{{ route('inbox.calendarEvent', $message) }}"
+                  x-data="{ tz: Intl.DateTimeFormat().resolvedOptions().timeZone }"
+                  style="padding:20px; display:flex; flex-direction:column; gap:12px;">
+                @csrf
+                <input type="hidden" name="timezone" x-model="tz">
+                <h3 style="margin:0; font-weight:600;">Create calendar event</h3>
+                <label style="display:flex; flex-direction:column; gap:4px; font-size:13px;">
+                    Title
+                    <input name="title" value="{{ $message->subject }}" required class="input">
+                </label>
+                <div style="display:flex; gap:12px;">
+                    <label style="display:flex; flex-direction:column; gap:4px; font-size:13px; flex:1;">
+                        Starts
+                        <input type="datetime-local" name="starts_at" value="{{ $eventStart->format('Y-m-d\TH:i') }}" required class="input">
+                    </label>
+                    <label style="display:flex; flex-direction:column; gap:4px; font-size:13px; flex:1;">
+                        Ends
+                        <input type="datetime-local" name="ends_at" value="{{ $eventStart->copy()->addMinutes(30)->format('Y-m-d\TH:i') }}" required class="input">
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                    <button type="button" class="btn sm ghost" x-on:click="$dispatch('close-modal', 'cal-{{ $message->id }}')">Cancel</button>
+                    <button type="submit" class="btn sm">Create event</button>
+                </div>
+            </form>
+        </x-modal>
+    @endif
 </div>
