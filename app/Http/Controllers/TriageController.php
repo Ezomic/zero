@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailAccount;
@@ -22,9 +23,11 @@ use Illuminate\View\View;
  */
 class TriageController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     public function index(Request $request, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
-        $accounts = auth()->user()->mailAccounts()->where('is_active', true)->get();
+        $accounts = $this->currentUser()->mailAccounts()->where('is_active', true)->get();
         /** @var MailAccount|null $account */
         $account = $accounts->firstWhere('id', $request->integer('account')) ?: $accounts->first();
 
@@ -157,7 +160,7 @@ class TriageController extends Controller
 
     protected function authorizeOwnership(Email $email): void
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
     }
 
     /** @return Builder<Email> */

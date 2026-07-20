@@ -101,7 +101,7 @@ class GraphMailSyncService
 
     public function fetchBody(Email $email): void
     {
-        $account = $email->mailAccount;
+        $account = $email->requireMailAccount();
         $accessToken = $this->tokenRefresher->freshAccessToken($account);
 
         $response = Http::withToken($accessToken)
@@ -128,9 +128,13 @@ class GraphMailSyncService
 
     public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
     {
-        $account = $email->mailAccount;
+        $account = $email->requireMailAccount();
         $accessToken = $this->tokenRefresher->freshAccessToken($account);
         $messageId = $sourceUid ?? $email->uid;
+
+        if ($messageId === null) {
+            throw new RuntimeException("Email {$email->id} has no remote uid to act on.");
+        }
 
         if (str_starts_with($action, 'move:')) {
             $this->applyMove($email, $account, $accessToken, $messageId, substr($action, 5));
@@ -340,7 +344,7 @@ class GraphMailSyncService
                 fromAddress: $fromAddress ?? '',
                 fromName: $fromName,
                 subject: $subject,
-                sentAt: $sentAt?->toISOString() ?? now()->toISOString(),
+                sentAt: ($sentAt ?? now())->toISOString() ?? '',
             ));
         }
 

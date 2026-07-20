@@ -33,7 +33,7 @@ class ApplyEmailFlagJob implements ShouldQueue
 
     public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
     {
-        if ($this->email->mailAccount->provider === MailAccount::PROVIDER_OUTLOOK) {
+        if ($this->email->requireMailAccount()->provider === MailAccount::PROVIDER_OUTLOOK) {
             $graphMailSyncService->applyAction($this->email, $this->action, $this->sourceUid);
 
             return;

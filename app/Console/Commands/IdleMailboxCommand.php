@@ -68,6 +68,12 @@ class IdleMailboxCommand extends Command
 
         $inbox = $client->getFolder('INBOX');
 
+        if ($inbox === null) {
+            $this->error("Could not open INBOX for {$account->email_address}.");
+
+            return self::FAILURE;
+        }
+
         // IDLE blocks until the server pushes a notification (new message,
         // flag change, expunge). We dispatch a sync job and immediately
         // re-enter IDLE — the sync handles deduplication, so triggering it

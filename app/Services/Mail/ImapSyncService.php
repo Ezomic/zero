@@ -155,7 +155,7 @@ class ImapSyncService
 
                 $folderRecord = MailFolder::where('mail_account_id', $account->id)
                     ->where('remote_path', $remotePath)
-                    ->first();
+                    ->firstOrFail();
 
                 $this->syncFolder($account, $folder, $folderRecord, $localName, $maxMessagesPerFolder);
             }
@@ -181,7 +181,7 @@ class ImapSyncService
      */
     public function fetchBody(Email $email): void
     {
-        $account = $email->mailAccount;
+        $account = $email->requireMailAccount();
         $remotePath = $email->remote_folder_path ?: $email->folder;
 
         $client = $this->buildClient($account);
@@ -233,7 +233,7 @@ class ImapSyncService
      */
     public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
     {
-        $account = $email->mailAccount;
+        $account = $email->requireMailAccount();
         $remotePath = $email->remote_folder_path ?: $email->folder;
 
         $client = $this->buildClient($account);
@@ -550,7 +550,7 @@ class ImapSyncService
                 fromAddress: $fromAddress ?? '',
                 fromName: $fromName,
                 subject: $subject,
-                sentAt: $sentAt->toISOString(),
+                sentAt: $sentAt->toISOString() ?? '',
             ));
 
             if (config('features.macos_notifications')) {

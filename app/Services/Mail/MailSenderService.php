@@ -114,8 +114,8 @@ class MailSenderService
     {
         $dsn = sprintf(
             'smtp://%s:%s@%s:%d',
-            rawurlencode($account->smtp_username),
-            rawurlencode($account->smtp_password),
+            rawurlencode($account->smtp_username ?? ''),
+            rawurlencode($account->smtp_password ?? ''),
             $account->smtp_host,
             $account->smtp_port,
         );

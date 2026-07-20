@@ -13,7 +13,7 @@ class CalendarEventController extends Controller
 {
     public function store(Request $request, Email $email, CalendarClient $calendar): RedirectResponse
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'],

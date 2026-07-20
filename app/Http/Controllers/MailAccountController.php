@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
 use Illuminate\Http\RedirectResponse;
@@ -10,9 +11,11 @@ use Illuminate\View\View;
 
 class MailAccountController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     public function index(): View
     {
-        $accounts = auth()->user()->mailAccounts()->latest()->get();
+        $accounts = $this->currentUser()->mailAccounts()->latest()->get();
 
         return view('accounts.index', compact('accounts'));
     }
@@ -44,7 +47,7 @@ class MailAccountController extends Controller
         ]);
 
         /** @var MailAccount $account */
-        $account = auth()->user()->mailAccounts()->create([
+        $account = $this->currentUser()->mailAccounts()->create([
             ...$data,
             'provider' => MailAccount::PROVIDER_IMAP,
             'is_active' => true,

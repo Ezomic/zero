@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use App\Models\Draft;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -10,9 +11,11 @@ use Illuminate\View\View;
 
 class DraftController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     public function index(): View
     {
-        $drafts = auth()->user()->drafts()->latest('updated_at')->get();
+        $drafts = $this->currentUser()->drafts()->latest('updated_at')->get();
 
         return view('inbox.drafts', compact('drafts'));
     }

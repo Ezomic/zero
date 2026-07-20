@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailAccount;
@@ -17,6 +18,8 @@ use Illuminate\View\View;
 
 class InboxController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     /** Fallback tabs shown when no specific account is selected — once an
      *  account is chosen, its own discovered folders (mail_folders) are used
      *  instead, since different accounts can have entirely different custom
@@ -47,7 +50,7 @@ class InboxController extends Controller
         if ($request->filled('open')) {
             $openEmail = Email::find($request->integer('open'));
 
-            if ($openEmail && $openEmail->mailAccount->user_id === auth()->id()) {
+            if ($openEmail && $openEmail->mailAccount?->user_id === auth()->id()) {
                 $viewData['openThread'] = $this->openedThreadData($openEmail, $imapSyncService, $graphMailSyncService);
             }
         }
@@ -66,7 +69,7 @@ class InboxController extends Controller
      */
     public function show(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
         $selectedAccountId = $email->mail_account_id;
         $showArchived = $email->is_archived;
@@ -97,7 +100,7 @@ class InboxController extends Controller
             ->latest('id')
             ->firstOrFail();
 
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
         return redirect()->route('inbox.show', $email);
     }
@@ -110,7 +113,7 @@ class InboxController extends Controller
      */
     public function panel(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
         return view('inbox._reading_pane', $this->openedThreadData($email, $imapSyncService, $graphMailSyncService));
     }
@@ -125,7 +128,7 @@ class InboxController extends Controller
      */
     protected function listData(?int $selectedAccountId, string $folder, bool $showArchived, ?string $q, array $availableFolders): array
     {
-        $accountIds = auth()->user()->mailAccounts()->pluck('id');
+        $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
         $base = Email::query()
             ->whereIn('mail_account_id', $accountIds)
@@ -167,7 +170,7 @@ class InboxController extends Controller
 
         return [
             'emails' => $emails,
-            'accounts' => auth()->user()->mailAccounts()->get(),
+            'accounts' => $this->currentUser()->mailAccounts()->get(),
             'folder' => $folder,
             'showArchived' => $showArchived,
             'threadCounts' => $threadCounts,
@@ -182,7 +185,7 @@ class InboxController extends Controller
     protected function openedThreadData(Email $email, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): array
     {
         $messages = $email->threadMessages()->get();
-        $syncService = $email->mailAccount->provider === MailAccount::PROVIDER_OUTLOOK ? $graphMailSyncService : $imapSyncService;
+        $syncService = $email->requireMailAccount()->provider === MailAccount::PROVIDER_OUTLOOK ? $graphMailSyncService : $imapSyncService;
 
         foreach ($messages as $message) {
             if ($message->body_html === null && $message->body_text === null) {
@@ -304,7 +307,7 @@ class InboxController extends Controller
             'ids.*' => ['integer'],
         ]);
 
-        $accountIds = auth()->user()->mailAccounts()->pluck('id');
+        $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
         $selected = Email::whereIn('id', $data['ids'])
             ->whereIn('mail_account_id', $accountIds)
@@ -352,7 +355,7 @@ class InboxController extends Controller
         $folder = $request->get('folder', 'INBOX');
         $showArchived = $request->boolean('archived');
 
-        $accountIds = auth()->user()->mailAccounts()->pluck('id');
+        $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
         $base = Email::query()
             ->whereIn('mail_account_id', $accountIds)
@@ -403,7 +406,7 @@ class InboxController extends Controller
      */
     public function unreadCount(): JsonResponse
     {
-        $accountIds = auth()->user()->mailAccounts()->pluck('id');
+        $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
         $total = Email::whereIn('mail_account_id', $accountIds)
             ->where('folder', 'INBOX')
@@ -498,7 +501,7 @@ class InboxController extends Controller
 
     protected function authorizeOwnership(Email $email): void
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
     }
 
     /** @return Builder<Email> */

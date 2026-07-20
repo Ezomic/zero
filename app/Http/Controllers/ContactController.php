@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ContactController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     /**
      * Used by the compose page's To/Cc autocomplete dropdown.
      */
@@ -18,7 +21,7 @@ class ContactController extends Controller
             return response()->json([]);
         }
 
-        $contacts = auth()->user()->contacts()
+        $contacts = $this->currentUser()->contacts()
             ->where(function ($query) use ($q) {
                 $query->where('email', 'like', "%{$q}%")
                     ->orWhere('name', 'like', "%{$q}%");

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\InteractsWithCurrentUser;
 use App\Models\Contact;
 use App\Models\Draft;
 use App\Models\Email;
@@ -13,9 +14,11 @@ use Illuminate\View\View;
 
 class ComposeController extends Controller
 {
+    use InteractsWithCurrentUser;
+
     public function create(Request $request): View
     {
-        $accounts = auth()->user()->mailAccounts()->where('is_active', true)->get();
+        $accounts = $this->currentUser()->mailAccounts()->where('is_active', true)->get();
         $prefill = $this->emptyPrefill();
 
         if ($request->filled('draft')) {
@@ -95,28 +98,29 @@ class ComposeController extends Controller
 
     protected function prefillFromEmail(Email $email, string $mode): View
     {
-        abort_unless($email->mailAccount->user_id === auth()->id(), 403);
+        abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
-        $accounts = auth()->user()->mailAccounts()->where('is_active', true)->get();
-        $account = $email->mailAccount;
+        $accounts = $this->currentUser()->mailAccounts()->where('is_active', true)->get();
+        $account = $email->requireMailAccount();
         $originalText = strip_tags($email->body_text ?: $email->body_html ?: '');
+        $subject = $email->subject ?? '';
 
         $prefill = $this->emptyPrefill();
         $prefill['mail_account_id'] = $account->id;
-        $prefill['subject'] = $email->subject;
+        $prefill['subject'] = $subject;
 
         if ($mode === 'forward') {
-            $prefill['subject'] = preg_match('/^fwd:/i', $email->subject) ? $email->subject : "Fwd: {$email->subject}";
+            $prefill['subject'] = preg_match('/^fwd:/i', $subject) ? $subject : "Fwd: {$subject}";
             $prefill['body'] = "\n\n---------- Forwarded message ----------\n"
                 .'From: '.($email->from_name ?: $email->from_address)." <{$email->from_address}>\n"
                 .'Date: '.optional($email->sent_at)->format('M j, Y g:i A')."\n"
-                ."Subject: {$email->subject}\n\n"
+                ."Subject: {$subject}\n\n"
                 .$originalText;
 
             return view('inbox.compose', compact('accounts', 'prefill'));
         }
 
-        $prefill['subject'] = preg_match('/^re:/i', $email->subject) ? $email->subject : "Re: {$email->subject}";
+        $prefill['subject'] = preg_match('/^re:/i', $subject) ? $subject : "Re: {$subject}";
         $prefill['to'] = $email->from_address;
         $prefill['in_reply_to'] = $email->message_id;
         $prefill['references'] = trim(($email->references_header ? $email->references_header.' ' : '').$email->message_id);
@@ -134,7 +138,7 @@ class ComposeController extends Controller
                 ->map(fn ($formatted) => $this->extractAddress($formatted))
                 ->filter(fn ($addr) => $addr
                     && strcasecmp($addr, $account->email_address) !== 0
-                    && strcasecmp($addr, $email->from_address) !== 0)
+                    && strcasecmp($addr, $email->from_address ?? '') !== 0)
                 ->unique()
                 ->values();
 

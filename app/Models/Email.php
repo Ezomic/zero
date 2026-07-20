@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class Email extends Model
 {
@@ -63,6 +64,22 @@ class Email extends Model
     public function mailAccount(): BelongsTo
     {
         return $this->belongsTo(MailAccount::class);
+    }
+
+    /**
+     * The owning account, for the sync paths that cannot proceed without one.
+     * emails.mail_account_id is NOT NULL behind a cascading foreign key, so a
+     * null here means the row was orphaned outside Eloquent.
+     */
+    public function requireMailAccount(): MailAccount
+    {
+        $account = $this->mailAccount;
+
+        if ($account === null) {
+            throw new RuntimeException("Email {$this->id} has no mail account.");
+        }
+
+        return $account;
     }
 
     /** @return HasMany<EmailAttachment, $this> */
