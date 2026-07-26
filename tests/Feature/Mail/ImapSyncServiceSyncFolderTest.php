@@ -18,6 +18,8 @@ use Mockery;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
 use Webklex\PHPIMAP\Client;
+use Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface;
+use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 use Webklex\PHPIMAP\Query\WhereQuery;
@@ -110,10 +112,10 @@ class ImapSyncServiceSyncFolderTest extends TestCase
      */
     private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid): void
     {
-        $response = Mockery::mock(\Webklex\PHPIMAP\Connection\Protocols\Response::class);
+        $response = Mockery::mock(Response::class);
         $response->shouldReceive('validatedData')->andReturn($allUids);
 
-        $connection = Mockery::mock(\Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface::class);
+        $connection = Mockery::mock(ProtocolInterface::class);
         $connection->shouldReceive('getUid')->andReturn($response);
 
         $client = Mockery::mock(Client::class);
