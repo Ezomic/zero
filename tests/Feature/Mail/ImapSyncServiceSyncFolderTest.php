@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Event;
 use Mockery;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
+use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 use Webklex\PHPIMAP\Query\WhereQuery;
@@ -98,6 +99,42 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         return $message;
     }
 
+    /**
+     * Wire up the incremental fetch path: the folder's full UID list is read
+     * cheaply from the connection, then messages are fetched in batches via
+     * curate_messages(). $messagesByUid maps uid => Message for the ones that
+     * should come back.
+     *
+     * @param  array<int>  $allUids
+     * @param  array<int, Message>  $messagesByUid
+     */
+    private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid): void
+    {
+        $response = Mockery::mock(\Webklex\PHPIMAP\Connection\Protocols\Response::class);
+        $response->shouldReceive('validatedData')->andReturn($allUids);
+
+        $connection = Mockery::mock(\Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface::class);
+        $connection->shouldReceive('getUid')->andReturn($response);
+
+        $client = Mockery::mock(Client::class);
+        $client->shouldReceive('getConnection')->andReturn($connection);
+        $folder->shouldReceive('getClient')->andReturn($client);
+
+        $query = Mockery::mock(WhereQuery::class);
+        $folder->shouldReceive('query')->andReturn($query);
+        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
+        $query->shouldReceive('curate_messages')->andReturnUsing(function ($uidCollection) use ($messagesByUid) {
+            $messages = [];
+            foreach ($uidCollection as $uid) {
+                if (isset($messagesByUid[(int) $uid])) {
+                    $messages[] = $messagesByUid[(int) $uid];
+                }
+            }
+
+            return new MessageCollection($messages);
+        });
+    }
+
     public function test_incremental_sync_fetches_only_uids_above_last_uid_and_checkpoints_the_highest(): void
     {
         $folderRecord = MailFolder::create([
@@ -111,20 +148,57 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         $folder = $this->makeFolder();
         $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
 
-        $query = Mockery::mock(WhereQuery::class);
-        $folder->shouldReceive('messages')->andReturn($query);
-        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
-        $query->shouldReceive('limit')->with(5000)->andReturnSelf();
-        $query->shouldReceive('fetchOrderDesc')->andReturnSelf();
-        $query->shouldReceive('getByUidGreaterOrEqual')->with(101)->andReturn(new MessageCollection([
-            $this->makeMessage(uid: 101, isRead: false),
-            $this->makeMessage(uid: 103, isRead: false),
-        ]));
+        // UIDs 50 and 100 are at/below the cursor and must be skipped; only
+        // 101 and 103 are fetched, and last_uid checkpoints to the highest.
+        $this->mockIncrementalFetch($folder, [50, 100, 101, 103], [
+            101 => $this->makeMessage(uid: 101, isRead: false),
+            103 => $this->makeMessage(uid: 103, isRead: false),
+        ]);
 
         $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
 
         $this->assertSame(103, $folderRecord->fresh()->last_uid);
         $this->assertSame(2, Email::where('mail_account_id', $this->account->id)->count());
+    }
+
+    public function test_incremental_sync_batches_a_large_backlog_and_stops_at_the_deadline(): void
+    {
+        // Regression for ZERO-53: a folder far behind its cursor must be
+        // fetched in checkpointed batches, not one unbounded call, so a slow
+        // (throttled) account can make durable progress across runs instead of
+        // losing every attempt to the job timeout.
+        $folderRecord = MailFolder::create([
+            'mail_account_id' => $this->account->id,
+            'local_name' => 'INBOX',
+            'remote_path' => 'INBOX',
+            'last_uid' => 100,
+            'uid_validity' => 42,
+        ]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+
+        // 90..100 are at/below the cursor (skipped); 101..130 are the backlog.
+        $messagesByUid = [];
+        foreach (range(101, 130) as $uid) {
+            $messagesByUid[$uid] = $this->makeMessage(uid: $uid, isRead: true);
+        }
+        $this->mockIncrementalFetch($folder, range(90, 130), $messagesByUid);
+
+        $pastDeadline = Carbon::now()->subSecond();
+
+        try {
+            $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000, $pastDeadline);
+            $this->fail('Expected SyncBudgetExceededException to stop the run at the deadline');
+        } catch (SyncBudgetExceededException) {
+            // Expected — a clean, intentional pause.
+        }
+
+        // First batch of FULL_SYNC_CHUNK_SIZE (25) messages (uids 101..125) is
+        // processed and checkpointed; the deadline then stops the run before
+        // the remaining backlog (126..130) is fetched.
+        $this->assertSame(125, $folderRecord->fresh()->last_uid, 'first batch must checkpoint before the budget stop');
+        $this->assertSame(25, Email::where('mail_account_id', $this->account->id)->count(), 'only the first batch should be processed');
     }
 
     public function test_uid_validity_change_resets_last_uid_and_triggers_a_full_resync_instead_of_incremental(): void
@@ -219,17 +293,11 @@ class ImapSyncServiceSyncFolderTest extends TestCase
 
         $folder = $this->makeFolder();
         $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 77]);
-
-        $query = Mockery::mock(WhereQuery::class);
-        $folder->shouldReceive('messages')->andReturn($query);
-        // Must stay on the incremental path — a full re-fetch (all()/chunked())
-        // would mean the cursor was wrongly reset.
-        $query->shouldNotReceive('all');
-        $query->shouldNotReceive('chunked');
-        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
-        $query->shouldReceive('limit')->with(5000)->andReturnSelf();
-        $query->shouldReceive('fetchOrderDesc')->andReturnSelf();
-        $query->shouldReceive('getByUidGreaterOrEqual')->with(308)->andReturn(new MessageCollection([]));
+        // Must stay on the incremental path (no full re-fetch). All server UIDs
+        // are at/below the cursor, so nothing new is fetched and the cursor is
+        // preserved — a reset would have wiped it to 0.
+        $folder->shouldNotReceive('messages');
+        $this->mockIncrementalFetch($folder, [100, 200, 307], []);
 
         $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'Saxion', 5000);
 
@@ -316,14 +384,9 @@ class ImapSyncServiceSyncFolderTest extends TestCase
 
         $folder2 = $this->makeFolder();
         $folder2->shouldReceive('examine')->andReturn(['uidvalidity' => 7]);
-        $query2 = Mockery::mock(WhereQuery::class);
-        $folder2->shouldReceive('messages')->andReturn($query2);
-        $query2->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
-        $query2->shouldReceive('limit')->with(5000)->andReturnSelf();
-        $query2->shouldReceive('fetchOrderDesc')->andReturnSelf();
-        $query2->shouldReceive('getByUidGreaterOrEqual')->with(51)->andReturn(new MessageCollection([
-            $this->makeMessage(uid: 51, isRead: false),
-        ]));
+        $this->mockIncrementalFetch($folder2, [50, 51], [
+            51 => $this->makeMessage(uid: 51, isRead: false),
+        ]);
 
         // Note: NewEmailArrived only fires for folderName === 'INBOX' in the
         // real implementation, so use INBOX here to actually exercise the
