@@ -439,25 +439,27 @@ class ImapSyncService
 
     protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit, ?CarbonInterface $deadline = null): void
     {
-        $incremental = false;
+        // Record UIDVALIDITY on every run, including first-time full syncs.
+        // IMAP UIDs are only stable while UIDVALIDITY is unchanged, so a
+        // genuine change means the server recreated the folder and our stored
+        // UIDs are meaningless — wipe the cursor and resync in full.
+        //
+        // A *stored* 0 is not a change: it just means we've never recorded a
+        // UIDVALIDITY for this folder yet (a first-time full sync, or a folder
+        // synced before this value was persisted). Adopt the server's value
+        // without discarding progress. Treating 0 as a change is what caused
+        // every folder to reset on its first incremental run and re-fetch the
+        // whole mailbox forever (see ZERO-50).
+        $serverUidValidity = (int) ($folder->examine()['uidvalidity'] ?? 0);
+        $storedUidValidity = (int) ($folderRecord->uid_validity ?? 0);
 
-        if ($folderRecord->last_uid > 0) {
-            // Incremental: only fetch messages with a UID higher than the last
-            // one we saw. IMAP UIDs are monotonically increasing per folder, so
-            // this is safe as long as the UIDVALIDITY hasn't changed. If the
-            // server reports a new UIDVALIDITY the folder was recreated and we
-            // need a full resync — reset last_uid to 0 and fetch everything.
-            $examined = $folder->examine();
-            $serverUidValidity = (int) ($examined['uidvalidity'] ?? 0);
-
-            if ($serverUidValidity > 0 && $serverUidValidity !== (int) ($folderRecord->uid_validity ?? $serverUidValidity)) {
-                $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
-            } else {
-                $folderRecord->update(['uid_validity' => $serverUidValidity]);
-                $incremental = true;
-            }
+        if ($storedUidValidity > 0 && $serverUidValidity > 0 && $serverUidValidity !== $storedUidValidity) {
+            $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
+        } elseif ($serverUidValidity > 0 && $serverUidValidity !== $storedUidValidity) {
+            $folderRecord->update(['uid_validity' => $serverUidValidity]);
         }
 
+        $incremental = $folderRecord->last_uid > 0;
         $highestUid = $folderRecord->last_uid;
 
         if ($incremental) {

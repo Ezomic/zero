@@ -173,7 +173,10 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         ]);
 
         $folder = $this->makeFolder();
-        $folder->shouldNotReceive('examine'); // last_uid=0 means this is a first-time sync — no incremental branch at all.
+        // examine() runs on every sync now (including first-time full syncs) so
+        // UIDVALIDITY is recorded from the start; a 0 here means the server did
+        // not report one and no reset logic applies.
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 0]);
 
         $query = Mockery::mock(WhereQuery::class);
         $folder->shouldReceive('messages')->andReturn($query);
@@ -199,6 +202,42 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         $this->assertSame(20, $folderRecord->fresh()->last_uid);
     }
 
+    public function test_a_stored_zero_uid_validity_is_adopted_not_treated_as_a_folder_recreation(): void
+    {
+        // Regression for ZERO-50: a folder fully synced by a previous run is
+        // left with uid_validity=0 until this run records it. That stored 0
+        // must NOT be read as a changed UIDVALIDITY — doing so wiped last_uid
+        // and re-fetched the whole folder on every run, livelocking the
+        // backfill.
+        $folderRecord = MailFolder::create([
+            'mail_account_id' => $this->account->id,
+            'local_name' => 'Saxion',
+            'remote_path' => 'Saxion',
+            'last_uid' => 307,
+            'uid_validity' => 0,
+        ]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 77]);
+
+        $query = Mockery::mock(WhereQuery::class);
+        $folder->shouldReceive('messages')->andReturn($query);
+        // Must stay on the incremental path — a full re-fetch (all()/chunked())
+        // would mean the cursor was wrongly reset.
+        $query->shouldNotReceive('all');
+        $query->shouldNotReceive('chunked');
+        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
+        $query->shouldReceive('limit')->with(5000)->andReturnSelf();
+        $query->shouldReceive('fetchOrderDesc')->andReturnSelf();
+        $query->shouldReceive('getByUidGreaterOrEqual')->with(308)->andReturn(new MessageCollection([]));
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'Saxion', 5000);
+
+        $folderRecord->refresh();
+        $this->assertSame(307, $folderRecord->last_uid, 'cursor must be preserved, not reset');
+        $this->assertSame(77, $folderRecord->uid_validity, 'server UIDVALIDITY should now be recorded');
+    }
+
     public function test_full_sync_stops_at_the_time_budget_after_checkpointing_the_current_batch(): void
     {
         $folderRecord = MailFolder::create([
@@ -210,6 +249,7 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         ]);
 
         $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 0]);
         $query = Mockery::mock(WhereQuery::class);
         $folder->shouldReceive('messages')->andReturn($query);
         $query->shouldReceive('all')->andReturnSelf();
@@ -251,6 +291,7 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         ]);
 
         $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 0]);
         $query = Mockery::mock(WhereQuery::class);
         $folder->shouldReceive('messages')->andReturn($query);
         $query->shouldReceive('all')->andReturnSelf();
