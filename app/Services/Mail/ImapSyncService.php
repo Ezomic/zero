@@ -682,7 +682,13 @@ class ImapSyncService
 
     protected function buildClient(MailAccount $account): Client
     {
-        $cm = new ClientManager;
+        // Seed the manager with the app's imap config so its `options` (e.g.
+        // fallback_date) actually apply. ClientManager::make() reads the
+        // manager's own top-level `options` for the client — the per-account
+        // config we pass below only carries connection details — so a bare
+        // `new ClientManager` would silently fall back to the package defaults
+        // and ignore config/imap.php entirely (see ZERO-51).
+        $cm = new ClientManager(config('imap'));
 
         $config = [
             'host' => $account->imap_host,
