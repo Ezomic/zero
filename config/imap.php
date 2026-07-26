@@ -166,7 +166,7 @@ return [
         'rfc822' => true,
         'debug' => false,
         'uid_cache' => true,
-        // 'fallback_date' => "01.01.1970 00:00:00",
+        'fallback_date' => '1970-01-01 00:00:00', // some messages ship an unparseable Date header; use a sentinel instead of throwing and aborting the sync
         'boundary' => '/boundary=(.*?(?=;)|(.*))/i',
         'message_key' => 'list',
         'fetch_order' => 'asc',
