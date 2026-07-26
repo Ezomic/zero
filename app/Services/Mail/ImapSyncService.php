@@ -3,11 +3,13 @@
 namespace App\Services\Mail;
 
 use App\Events\NewEmailArrived;
+use App\Exceptions\SyncBudgetExceededException;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Webklex\PHPIMAP\Client;
@@ -120,6 +122,16 @@ class ImapSyncService
      *  progress. */
     protected const FULL_SYNC_CHUNK_SIZE = 25;
 
+    /** Soft wall-clock budget for a single sync run, kept comfortably below
+     *  SyncMailAccountJob::$timeout (1800s). Folders are processed
+     *  least-recently-synced first and each run stops cleanly once this
+     *  budget is spent, so no single large or throttled folder can consume
+     *  the whole job and starve the others: the next scheduled run resumes
+     *  from the folders that didn't get their turn. Headroom below the hard
+     *  timeout covers the one in-flight batch that may still finish after the
+     *  deadline is crossed (checkpointed before we bail). */
+    protected const SYNC_TIME_BUDGET_SECONDS = 1500;
+
     public function __construct(
         protected OAuthTokenRefresher $tokenRefresher,
     ) {}
@@ -146,24 +158,51 @@ class ImapSyncService
                 );
             }
 
-            foreach ($folders as $remotePath => $localName) {
-                $folder = $client->getFolder($remotePath);
+            // Process folders least-recently-synced first and give the whole
+            // run a soft time budget. Each folder is touched before we work
+            // it, so even a folder whose fetch hard-times-out (killed by the
+            // job timeout before it can checkpoint) still sorts to the back
+            // next run. One bad folder wastes at most one run per rotation
+            // instead of blocking every folder behind it forever.
+            $deadline = now()->addSeconds(self::SYNC_TIME_BUDGET_SECONDS);
+
+            $folderRecords = MailFolder::where('mail_account_id', $account->id)
+                ->whereIn('remote_path', array_keys($folders))
+                ->orderBy('updated_at')
+                ->orderBy('id')
+                ->get();
+
+            $completed = true;
+
+            foreach ($folderRecords as $folderRecord) {
+                if (now()->greaterThanOrEqualTo($deadline)) {
+                    $completed = false;
+                    break;
+                }
+
+                $folder = $client->getFolder($folderRecord->remote_path);
 
                 if (! $folder) {
                     continue;
                 }
 
-                $folderRecord = MailFolder::where('mail_account_id', $account->id)
-                    ->where('remote_path', $remotePath)
-                    ->firstOrFail();
+                $folderRecord->touch();
 
-                $this->syncFolder($account, $folder, $folderRecord, $localName, $maxMessagesPerFolder);
+                $this->syncFolder($account, $folder, $folderRecord, $folders[$folderRecord->remote_path], $maxMessagesPerFolder, $deadline);
             }
 
+            // Only a run that drained every folder within its budget counts as
+            // fully caught up; otherwise stay in `syncing` so the scheduler's
+            // next dispatch resumes the remaining folders.
             $account->update([
-                'sync_status' => 'idle',
+                'sync_status' => $completed ? 'idle' : 'syncing',
                 'sync_status_since' => now(),
-                'last_synced_at' => now(),
+                'last_synced_at' => $completed ? now() : $account->last_synced_at,
+            ]);
+        } catch (SyncBudgetExceededException) {
+            $account->update([
+                'sync_status' => 'syncing',
+                'sync_status_since' => now(),
             ]);
         } catch (\Throwable $e) {
             $account->update([
@@ -398,7 +437,7 @@ class ImapSyncService
         return null;
     }
 
-    protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
+    protected function syncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit, ?CarbonInterface $deadline = null): void
     {
         $incremental = false;
 
@@ -453,13 +492,20 @@ class ImapSyncService
             // no criteria at all and the server rejects it with "Missing
             // search parameters" (see THI-292).
             $folder->messages()->all()->setFetchBody(false)->fetchOrderAsc()
-                ->chunked(function ($batch) use ($account, $folder, $folderName, $folderRecord, &$highestUid) {
+                ->chunked(function ($batch) use ($account, $folder, $folderName, $folderRecord, $deadline, &$highestUid) {
                     foreach ($batch as $message) {
                         $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: false));
                     }
 
                     if ($highestUid > $folderRecord->last_uid) {
                         $folderRecord->update(['last_uid' => $highestUid]);
+                    }
+
+                    // Stop cleanly at the run's time budget. Progress for this
+                    // batch is already checkpointed above, so the next run
+                    // resumes this folder as an ordinary incremental sync.
+                    if ($deadline && now()->greaterThanOrEqualTo($deadline)) {
+                        throw new SyncBudgetExceededException;
                     }
                 }, self::FULL_SYNC_CHUNK_SIZE);
         }

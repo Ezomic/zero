@@ -3,6 +3,7 @@
 namespace Tests\Feature\Mail;
 
 use App\Events\NewEmailArrived;
+use App\Exceptions\SyncBudgetExceededException;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Mockery;
@@ -25,9 +27,9 @@ use Webklex\PHPIMAP\Support\MessageCollection;
 // testing without requiring a live IMAP connection.
 class TestableImapSyncServiceForSyncFolder extends ImapSyncService
 {
-    public function callSyncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit): void
+    public function callSyncFolder(MailAccount $account, Folder $folder, MailFolder $folderRecord, string $folderName, int $limit, ?CarbonInterface $deadline = null): void
     {
-        $this->syncFolder($account, $folder, $folderRecord, $folderName, $limit);
+        $this->syncFolder($account, $folder, $folderRecord, $folderName, $limit, $deadline);
     }
 }
 
@@ -195,6 +197,42 @@ class ImapSyncServiceSyncFolderTest extends TestCase
 
         $this->assertSame(10, $midChunkLastUid, 'last_uid should be checkpointed after the first chunk, before the second chunk runs');
         $this->assertSame(20, $folderRecord->fresh()->last_uid);
+    }
+
+    public function test_full_sync_stops_at_the_time_budget_after_checkpointing_the_current_batch(): void
+    {
+        $folderRecord = MailFolder::create([
+            'mail_account_id' => $this->account->id,
+            'local_name' => 'INBOX',
+            'remote_path' => 'INBOX',
+            'last_uid' => 0,
+            'uid_validity' => 0,
+        ]);
+
+        $folder = $this->makeFolder();
+        $query = Mockery::mock(WhereQuery::class);
+        $folder->shouldReceive('messages')->andReturn($query);
+        $query->shouldReceive('all')->andReturnSelf();
+        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
+        $query->shouldReceive('fetchOrderAsc')->andReturnSelf();
+        $query->shouldReceive('chunked')->once()->andReturnUsing(function ($callback) {
+            // The first batch checkpoints, then the deadline stops the run —
+            // the second batch must never execute.
+            $callback(new MessageCollection([$this->makeMessage(uid: 10, isRead: false)]));
+            $callback(new MessageCollection([$this->makeMessage(uid: 20, isRead: false)]));
+        });
+
+        $pastDeadline = Carbon::now()->subSecond();
+
+        try {
+            $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000, $pastDeadline);
+            $this->fail('Expected SyncBudgetExceededException to stop the run at the deadline');
+        } catch (SyncBudgetExceededException) {
+            // Expected — a clean, intentional pause.
+        }
+
+        $this->assertSame(10, $folderRecord->fresh()->last_uid, 'the first batch must be checkpointed before the budget stop');
+        $this->assertSame(1, Email::where('mail_account_id', $this->account->id)->count(), 'no batch after the deadline should be processed');
     }
 
     public function test_incremental_sync_broadcasts_new_unread_messages_but_full_sync_does_not(): void
