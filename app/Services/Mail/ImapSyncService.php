@@ -463,16 +463,34 @@ class ImapSyncService
         $highestUid = $folderRecord->last_uid;
 
         if ($incremental) {
-            // Small, bounded set of new messages since last sync — one fetch
-            // is fine, no need to checkpoint mid-way.
-            // whereUidGreaterOrEqual() isn't supported by the installed
-            // webklex/php-imap version — getByUidGreaterOrEqual() filters the
-            // folder's UID list client-side instead.
-            $messages = $folder->messages()->setFetchBody(false)->limit($limit)->fetchOrderDesc()
-                ->getByUidGreaterOrEqual($folderRecord->last_uid + 1);
+            // Fetch new messages (uid > last_uid) oldest-first, in
+            // checkpointed batches. A folder that has fallen far behind can
+            // have thousands of messages above its cursor, and on a throttled
+            // account each header FETCH costs several seconds — a single
+            // unbounded fetch would blow the job timeout and lose the whole
+            // attempt (see ZERO-53). Retrieving the UID list is cheap; only
+            // the per-message FETCH is slow, so page it and checkpoint
+            // last_uid after every batch, stopping cleanly at the run budget.
+            $newUids = collect((array) $folder->getClient()->getConnection()->getUid()->validatedData())
+                ->map(fn ($uid) => (int) $uid)
+                ->filter(fn ($uid) => $uid > $folderRecord->last_uid)
+                ->sort()
+                ->values();
 
-            foreach ($messages as $message) {
-                $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));
+            foreach ($newUids->chunk(self::FULL_SYNC_CHUNK_SIZE) as $batch) {
+                $messages = $folder->query()->setFetchBody(false)->curate_messages($batch->values());
+
+                foreach ($messages as $message) {
+                    $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));
+                }
+
+                if ($highestUid > $folderRecord->last_uid) {
+                    $folderRecord->update(['last_uid' => $highestUid]);
+                }
+
+                if ($deadline && now()->greaterThanOrEqualTo($deadline)) {
+                    throw new SyncBudgetExceededException;
+                }
             }
         } else {
             // First-time full sync: a large mailbox can have thousands of
