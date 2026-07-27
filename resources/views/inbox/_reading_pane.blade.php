@@ -11,6 +11,20 @@
             </div>
             <div class="chip" style="color:var(--text-faint);">via {{ $email->mailAccount->email_address }}</div>
         </div>
+        @php
+            $rpTo = $email->recipientList();
+            $rpCc = $email->ccList();
+        @endphp
+        @if ($rpTo)
+            <div class="rp-recipients" style="color:var(--text-faint); font-size:13px; margin-top:4px;">
+                <span style="font-weight:600;">To:</span> {{ implode(', ', $rpTo) }}
+            </div>
+        @endif
+        @if ($rpCc)
+            <div class="rp-recipients" style="color:var(--text-faint); font-size:13px;">
+                <span style="font-weight:600;">Cc:</span> {{ implode(', ', $rpCc) }}
+            </div>
+        @endif
     </div>
     <div class="rp-actions">
         @if ($email->is_archived)

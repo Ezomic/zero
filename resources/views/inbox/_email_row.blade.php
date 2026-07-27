@@ -1,12 +1,14 @@
 @php
-    $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $email->from_name ?: $email->from_address), 0, 2)) ?: '??';
+    $rowParty = $email->isOutgoing() ? $email->recipientSummary() : ($email->from_name ?: $email->from_address);
+    $rowLabel = $email->isOutgoing() ? 'To: '.$rowParty : $rowParty;
+    $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $rowParty), 0, 2)) ?: '??';
 @endphp
 <div class="email-row trow {{ $email->is_read ? '' : 'unread' }} {{ $email->id === ($openEmailId ?? null) ? 'selected' : '' }}" data-email-id="{{ $email->id }}">
     <input type="checkbox" name="ids[]" value="{{ $email->id }}" class="row-checkbox" form="bulk-form">
     <div class="avatar" style="background:{{ $email->mailAccount->color }}">{{ $initials }}</div>
     <a href="{{ route('inbox.show', $email) }}" class="trow-main">
         <div class="trow-top">
-            <span class="trow-from">{{ $email->from_name ?: $email->from_address }}</span>
+            <span class="trow-from">{{ $rowLabel }}</span>
             <span class="trow-time">{{ $email->sent_at?->format('M j, g:i A') }}</span>
         </div>
         <div class="trow-subject">

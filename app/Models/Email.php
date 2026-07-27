@@ -104,6 +104,94 @@ class Email extends Model
     }
 
     /**
+     * True for messages the account owner sent: in these folders the "from" is
+     * always the owner, so lists and headers should surface the recipient.
+     */
+    public function isOutgoing(): bool
+    {
+        return in_array(strtoupper((string) $this->folder), ['SENT', 'DRAFTS'], true);
+    }
+
+    /**
+     * Compact recipient label for a list row: the first recipient's name (or
+     * email), plus "+N" when there are more.
+     */
+    public function recipientSummary(): string
+    {
+        $recipients = $this->parsedAddresses($this->to_addresses);
+
+        if ($recipients === []) {
+            return '(no recipient)';
+        }
+
+        $first = $recipients[0]['name'] !== '' ? $recipients[0]['name'] : $recipients[0]['email'];
+        $extra = count($recipients) - 1;
+
+        return $extra > 0 ? $first.' +'.$extra : $first;
+    }
+
+    /**
+     * Full "Name <email>" recipient strings for a header line.
+     *
+     * @return list<string>
+     */
+    public function recipientList(): array
+    {
+        return $this->formatAddresses($this->to_addresses);
+    }
+
+    /**
+     * Full "Name <email>" cc strings for a header line.
+     *
+     * @return list<string>
+     */
+    public function ccList(): array
+    {
+        return $this->formatAddresses($this->cc_addresses);
+    }
+
+    /**
+     * @param  mixed  $addresses  array of "Name <email>" / "<email>" strings
+     * @return list<string>
+     */
+    private function formatAddresses($addresses): array
+    {
+        return array_map(
+            fn (array $a): string => $a['name'] !== '' ? $a['name'].' <'.$a['email'].'>' : $a['email'],
+            $this->parsedAddresses($addresses)
+        );
+    }
+
+    /**
+     * @param  mixed  $addresses  array of "Name <email>" / "<email>" strings
+     * @return list<array{name: string, email: string}>
+     */
+    private function parsedAddresses($addresses): array
+    {
+        $result = [];
+
+        foreach (is_array($addresses) ? $addresses : [] as $raw) {
+            $raw = trim((string) $raw);
+
+            if (preg_match('/^(.*)<(.+)>$/', $raw, $m) === 1) {
+                $name = trim($m[1]);
+                $email = trim($m[2]);
+            } else {
+                $name = '';
+                $email = $raw;
+            }
+
+            if ($email === '') {
+                continue;
+            }
+
+            $result[] = ['name' => $name, 'email' => $email];
+        }
+
+        return $result;
+    }
+
+    /**
      * Best-guess destination folder for this message, based on where other
      * mail from the same sender (or failing that, the same sender domain)
      * has already ended up — reflects the mailbox's existing organization
