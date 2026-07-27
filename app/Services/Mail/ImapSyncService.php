@@ -471,14 +471,24 @@ class ImapSyncService
             // attempt (see ZERO-53). Retrieving the UID list is cheap; only
             // the per-message FETCH is slow, so page it and checkpoint
             // last_uid after every batch, stopping cleanly at the run budget.
-            $newUids = collect((array) $folder->getClient()->getConnection()->getUid()->validatedData())
+            // Read the new-UID list from a folder-scoped UID SEARCH, not from
+            // the raw connection's getUid(): getUid() reports whichever mailbox
+            // the shared connection currently has selected, which desyncs from
+            // $folder inside the round-robin multi-folder loop and returns UIDs
+            // from the wrong folder. Feeding those phantom UIDs to the fetch
+            // fails with "Command failed to process: Empty response" and takes
+            // the whole sync down (ZERO-55). A `whereUid('n:*')` search runs
+            // against $folder itself. IMAP's `n:*` always yields at least the
+            // highest existing UID even when nothing is new, so filter to
+            // uid > last_uid.
+            $newUids = collect($folder->query()->whereUid(($folderRecord->last_uid + 1).':*')->search())
                 ->map(fn ($uid) => (int) $uid)
                 ->filter(fn ($uid) => $uid > $folderRecord->last_uid)
                 ->sort()
                 ->values();
 
             foreach ($newUids->chunk(self::FULL_SYNC_CHUNK_SIZE) as $batch) {
-                $messages = $folder->query()->setFetchBody(false)->curate_messages($batch->values());
+                $messages = $folder->query()->setFetchBody(false)->whereUidIn($batch->values()->all())->get();
 
                 foreach ($messages as $message) {
                     $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));
