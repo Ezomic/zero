@@ -71,12 +71,16 @@
                                 @csrf
                                 <button class="btn sm" style="color:var(--warning); border-color:var(--warning);">Re-enable</button>
                             </form>
-                        @elseif ($account->sync_status === 'error')
+                        @else
+                            {{-- Reconnect is always available for OAuth accounts (not just on error),
+                                 so a token nearing expiry can be re-consented for a fresh refresh token.
+                                 Danger-styled when the account is actually failing, subtle otherwise. --}}
+                            @php $needsAttention = $account->sync_status === 'error'; @endphp
                             @if ($account->provider === 'gmail')
-                                <a href="{{ route('auth.google.redirect') }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Reconnect</a>
+                                <a href="{{ route('auth.google.redirect') }}" class="btn sm{{ $needsAttention ? '' : ' ghost' }}" @if ($needsAttention) style="color:var(--danger); border-color:var(--danger);" @endif>Reconnect</a>
                             @elseif ($account->provider === 'outlook')
-                                <a href="{{ route('auth.microsoft.redirect') }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Reconnect</a>
-                            @else
+                                <a href="{{ route('auth.microsoft.redirect') }}" class="btn sm{{ $needsAttention ? '' : ' ghost' }}" @if ($needsAttention) style="color:var(--danger); border-color:var(--danger);" @endif>Reconnect</a>
+                            @elseif ($needsAttention)
                                 <a href="{{ route('accounts.edit', $account) }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Update credentials</a>
                             @endif
                         @endif
