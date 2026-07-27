@@ -9,6 +9,7 @@ use RuntimeException;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
+use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
 
 /**
@@ -132,35 +133,38 @@ class MailSenderService
     protected function appendToSentFolder(MailAccount $account, string $rawMessage): void
     {
         try {
-            $cm = new ClientManager;
-            $client = $cm->make([
-                'host' => $account->imap_host,
-                'port' => $account->imap_port,
-                'encryption' => $account->imap_encryption,
-                'validate_cert' => true,
-                'username' => $account->imap_username,
-                'password' => $account->imap_password,
-                'timeout' => 30,
-            ]);
+            $client = $this->makeImapClient($account);
             $client->connect();
 
             // Find the Sent folder — providers name it differently.
-            $sentPath = null;
+            $sentFolder = null;
             foreach ($client->getFolders(false) as $folder) {
                 if (str_contains(strtolower($folder->name), 'sent')) {
-                    $sentPath = $folder->full_name ?? $folder->path;
+                    $sentFolder = $folder;
                     break;
                 }
             }
 
-            if ($sentPath) {
-                $client->appendMessage($rawMessage, $sentPath, ['Seen']);
-            }
+            // appendMessage lives on the Folder, not the Client.
+            $sentFolder?->appendMessage($rawMessage, ['Seen']);
         } catch (\Throwable) {
             // Best-effort — a send that succeeded shouldn't fail because the
             // IMAP append didn't work. The next sync will eventually pick it up
             // from the server's Sent folder anyway.
         }
+    }
+
+    protected function makeImapClient(MailAccount $account): Client
+    {
+        return (new ClientManager)->make([
+            'host' => $account->imap_host,
+            'port' => $account->imap_port,
+            'encryption' => $account->imap_encryption,
+            'validate_cert' => true,
+            'username' => $account->imap_username,
+            'password' => $account->imap_password,
+            'timeout' => 30,
+        ]);
     }
 
     /**

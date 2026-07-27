@@ -10,6 +10,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
+use Webklex\PHPIMAP\Client;
+use Webklex\PHPIMAP\Folder;
+use Webklex\PHPIMAP\Support\FolderCollection;
 
 class MailSenderServiceTest extends TestCase
 {
@@ -125,5 +128,36 @@ class MailSenderServiceTest extends TestCase
             'subject' => 'X',
             'html' => '<p>X</p>',
         ]);
+    }
+
+    public function test_append_to_sent_folder_appends_on_the_folder_not_the_client(): void
+    {
+        $account = MailAccount::factory()->make(['user_id' => $this->user->id]);
+
+        $sentFolder = Mockery::mock(Folder::class);
+        $sentFolder->name = 'Sent';
+        $sentFolder->shouldReceive('appendMessage')
+            ->once()
+            ->with('RAW-MIME', ['Seen']);
+
+        $client = Mockery::mock(Client::class);
+        $client->shouldReceive('connect')->once();
+        $client->shouldReceive('getFolders')->with(false)->andReturn(new FolderCollection([$sentFolder]));
+
+        $refresher = Mockery::mock(OAuthTokenRefresher::class);
+
+        $service = Mockery::mock(MailSenderService::class, [$refresher])->makePartial();
+        $service->shouldAllowMockingProtectedMethods()
+            ->shouldReceive('makeImapClient')
+            ->with($account)
+            ->andReturn($client);
+
+        $append = new \ReflectionMethod(MailSenderService::class, 'appendToSentFolder');
+        $append->setAccessible(true);
+        $append->invoke($service, $account, 'RAW-MIME');
+
+        // Mockery's ->once() on the Folder is the assertion; verify it explicitly so
+        // the test isn't reported as risky.
+        $this->assertTrue(true);
     }
 }
