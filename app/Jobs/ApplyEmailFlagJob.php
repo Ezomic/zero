@@ -25,11 +25,20 @@ class ApplyEmailFlagJob implements ShouldQueue
 
     public int $timeout = 60;
 
+    // Declared as a real property (not constructor-promoted) so it carries a
+    // genuine class-level default. A promoted param's default only applies to
+    // the constructor argument; old queued payloads serialized before this
+    // property existed (added in ZERO-9) deserialize without running the
+    // constructor and would leave a promoted property uninitialized.
+    protected ?string $sourceUid = null;
+
     public function __construct(
         protected Email $email,
         protected string $action,
-        protected ?string $sourceUid = null,
-    ) {}
+        ?string $sourceUid = null,
+    ) {
+        $this->sourceUid = $sourceUid;
+    }
 
     public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
     {
