@@ -10,13 +10,26 @@ use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\TriageController;
+use App\Services\Mail\GraphMailSyncService;
+use App\Services\Mail\ImapSyncService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Assumes Laravel Breeze (or similar) already provides /login, /register, etc.
 // and the 'auth' middleware group below.
 
+// Root is public: logged-out visitors get the marketing landing, signed-in
+// users get their inbox at the same URL (so no inbox URL changes). The inbox
+// branch is only reachable when authenticated, so no mail data leaks to guests.
+Route::get('/', function (Request $request, ImapSyncService $imap, GraphMailSyncService $graph) {
+    if (! auth()->check()) {
+        return view('landing');
+    }
+
+    return app(InboxController::class)->index($request, $imap, $graph);
+})->name('inbox.index');
+
 Route::middleware(['auth'])->group(function () {
-    Route::get('/', [InboxController::class, 'index'])->name('inbox.index');
 
     Route::get('/triage', [TriageController::class, 'index'])->name('triage.index');
     Route::post('/triage/{email}/delete', [TriageController::class, 'delete'])->name('triage.delete');
