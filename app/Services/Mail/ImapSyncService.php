@@ -511,24 +511,23 @@ class ImapSyncService
             // attempt (see ZERO-53). Retrieving the UID list is cheap; only
             // the per-message FETCH is slow, so page it and checkpoint
             // last_uid after every batch, stopping cleanly at the run budget.
-            // Read the new-UID list from a folder-scoped UID SEARCH, not from
-            // the raw connection's getUid(): getUid() reports whichever mailbox
-            // the shared connection currently has selected, which desyncs from
-            // $folder inside the round-robin multi-folder loop and returns UIDs
-            // from the wrong folder. Feeding those phantom UIDs to the fetch
-            // fails with "Command failed to process: Empty response" and takes
-            // the whole sync down (ZERO-55). A `whereUid('n:*')` search runs
-            // against $folder itself. IMAP's `n:*` always yields at least the
-            // highest existing UID even when nothing is new, so filter to
-            // uid > last_uid.
-            $newUids = collect($folder->query()->whereUid(($folderRecord->last_uid + 1).':*')->search())
+            // Read the folder's UID list via getUid() and filter to
+            // uid > last_uid, rather than whereUid('n:*'): webklex quotes a
+            // range value, so whereUid sends `UID SEARCH UID "n:*"` which Gmail
+            // rejects with "BAD Could not parse command" (see ZERO-61). getUid()
+            // returns the currently-examined folder's UIDs and is safe here
+            // because options.uid_cache is false (otherwise it could hand back a
+            // previous folder's cached list, since EXAMINE does not clear the
+            // cache). syncFolder examined $folder above, so it is the selected
+            // mailbox.
+            $newUids = collect((array) $folder->getClient()->getConnection()->getUid()->validatedData())
                 ->map(fn ($uid) => (int) $uid)
                 ->filter(fn ($uid) => $uid > $folderRecord->last_uid)
                 ->sort()
                 ->values();
 
             foreach ($newUids->chunk(self::FULL_SYNC_CHUNK_SIZE) as $batch) {
-                $messages = $folder->query()->setFetchBody(false)->whereUidIn($batch->values()->all())->get();
+                $messages = $folder->query()->setFetchBody(false)->curate_messages($batch->values());
 
                 foreach ($messages as $message) {
                     $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));

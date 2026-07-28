@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Event;
 use Mockery;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
+use Webklex\PHPIMAP\Client;
+use Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface;
+use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 use Webklex\PHPIMAP\Query\WhereQuery;
@@ -99,37 +102,33 @@ class ImapSyncServiceSyncFolderTest extends TestCase
     }
 
     /**
-     * Wire up the incremental fetch path: the new-UID list is read from a
-     * folder-scoped `whereUid('n:*')->search()`, then messages are fetched in
-     * batches via `whereUidIn($batch)->get()`. The raw connection's getUid()
-     * must never be touched (ZERO-55), so getClient() is disallowed.
-     * $messagesByUid maps uid => Message for the ones that should come back.
+     * Wire up the incremental fetch path: the folder's full UID list is read
+     * from the connection's getUid() (uid_cache off), then messages are fetched
+     * in batches via curate_messages(). whereUid('n:*') is deliberately not used
+     * because webklex quotes the range into an invalid `UID SEARCH UID "n:*"`
+     * (ZERO-61). $messagesByUid maps uid => Message for the ones that come back.
      *
      * @param  array<int>  $allUids
      * @param  array<int, Message>  $messagesByUid
      */
     private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid): void
     {
-        $folder->shouldNotReceive('getClient');
+        $response = Mockery::mock(Response::class);
+        $response->shouldReceive('validatedData')->andReturn($allUids);
+
+        $connection = Mockery::mock(ProtocolInterface::class);
+        $connection->shouldReceive('getUid')->andReturn($response);
+
+        $client = Mockery::mock(Client::class);
+        $client->shouldReceive('getConnection')->andReturn($connection);
+        $folder->shouldReceive('getClient')->andReturn($client);
 
         $query = Mockery::mock(WhereQuery::class);
         $folder->shouldReceive('query')->andReturn($query);
-
-        // whereUid('n:*')->search() returns the folder's UID list.
-        $query->shouldReceive('whereUid')->andReturnSelf();
-        $query->shouldReceive('search')->andReturn(collect($allUids));
-
-        // setFetchBody(false)->whereUidIn($batch)->get() fetches a batch.
         $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
-        $currentBatch = [];
-        $query->shouldReceive('whereUidIn')->andReturnUsing(function ($uids) use (&$currentBatch, $query) {
-            $currentBatch = $uids;
-
-            return $query;
-        });
-        $query->shouldReceive('get')->andReturnUsing(function () use (&$currentBatch, $messagesByUid) {
+        $query->shouldReceive('curate_messages')->andReturnUsing(function ($uidCollection) use ($messagesByUid) {
             $messages = [];
-            foreach ($currentBatch as $uid) {
+            foreach ($uidCollection as $uid) {
                 if (isset($messagesByUid[(int) $uid])) {
                     $messages[] = $messagesByUid[(int) $uid];
                 }
@@ -165,14 +164,15 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         $this->assertSame(2, Email::where('mail_account_id', $this->account->id)->count());
     }
 
-    public function test_incremental_sync_reads_uids_from_a_folder_scoped_search_not_the_raw_connection(): void
+    public function test_incremental_sync_reads_the_uid_list_via_getuid_and_filters_the_boundary(): void
     {
-        // Regression for ZERO-55: the incremental UID list must come from a
-        // folder-scoped `whereUid('n:*')->search()`, not the shared
-        // connection's getUid(). getUid() reports whichever mailbox the
-        // connection currently has selected, which desyncs from $folder in the
-        // round-robin loop and returned phantom UIDs — fetching those crashed
-        // the whole sync with "Command failed to process: Empty response".
+        // Regression for ZERO-61: the incremental UID list is read via getUid()
+        // (with uid_cache off), not whereUid('n:*'). webklex quotes that range
+        // into an invalid `UID SEARCH UID "n:*"` command that Gmail rejects with
+        // "BAD Could not parse command". getUid() returns every UID in the
+        // folder including the cursor itself, so uid == last_uid must be dropped.
+        // The mock wires up getUid()/curate_messages() and has no whereUid
+        // expectation, so a regression back to the quoted-range search fails.
         $folderRecord = MailFolder::create([
             'mail_account_id' => $this->account->id,
             'local_name' => 'INBOX',
@@ -183,18 +183,9 @@ class ImapSyncServiceSyncFolderTest extends TestCase
 
         $folder = $this->makeFolder();
         $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
-        // The raw connection must never be consulted for the UID list.
-        $folder->shouldNotReceive('getClient');
-
-        $query = Mockery::mock(WhereQuery::class);
-        $folder->shouldReceive('query')->andReturn($query);
-        // The search must be scoped to uid > last_uid via the 'n:*' range.
-        $query->shouldReceive('whereUid')->with('101:*')->andReturnSelf();
-        // The 'n:*' range returns the boundary UID (100) too; it must be filtered out.
-        $query->shouldReceive('search')->andReturn(collect([100, 101]));
-        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
-        $query->shouldReceive('whereUidIn')->with([101])->andReturnSelf();
-        $query->shouldReceive('get')->andReturn(new MessageCollection([$this->makeMessage(uid: 101, isRead: false)]));
+        $this->mockIncrementalFetch($folder, [100, 101], [
+            101 => $this->makeMessage(uid: 101, isRead: false),
+        ]);
 
         $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
 
