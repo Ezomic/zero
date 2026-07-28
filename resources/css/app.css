@@ -403,3 +403,64 @@ svg{ display:block; flex-shrink:0; }
   .lp-hero{ grid-template-columns:1fr; gap:32px; padding:40px 0 32px; }
   .lp-feats{ grid-template-columns:1fr; }
 }
+
+/* ================= MOBILE / RESPONSIVE ================= */
+/* Mobile-only chrome is hidden on desktop; the media query below reveals it. */
+.mobile-topbar{ display:none; }
+.bottom-nav{ display:none; }
+.nav-backdrop{ display:none; }
+.rp-back{ display:none; }
+
+@media (max-width:768px){
+  .app-shell{ height:100vh; }
+
+  /* Nav rail becomes an off-canvas drawer */
+  .navrail{ position:fixed; top:0; left:0; bottom:0; z-index:70; width:280px; max-width:86vw;
+    transform:translateX(-100%); transition:transform .22s ease; box-shadow:var(--shadow); }
+  .navrail.open{ transform:none; }
+  .nav-backdrop{ display:block; position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.45);
+    opacity:0; pointer-events:none; transition:opacity .2s; }
+  .nav-backdrop.show{ opacity:1; pointer-events:auto; }
+
+  /* Mobile top bar */
+  .mobile-topbar{ display:flex; align-items:center; gap:12px; padding:11px 14px;
+    border-bottom:1px solid var(--border); background:var(--bg-1); position:sticky; top:0; z-index:30; }
+  .mobile-topbar .brand-name{ font-size:15px; }
+
+  .main{ padding-bottom:64px; }
+
+  /* Bottom nav */
+  .bottom-nav{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--bg-1); border-top:1px solid var(--border); padding:6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  .bn-item{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0;
+    color:var(--text-faint); font-size:10px; font-weight:700; }
+  .bn-item svg{ width:20px; height:20px; }
+  .bn-item.active{ color:var(--accent-text); }
+  .bn-fab svg{ background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff;
+    width:34px; height:34px; padding:8px; border-radius:12px; box-shadow:0 4px 12px -4px var(--accent); margin-top:-14px; }
+
+  /* Inbox: stack the panes; list full-width, reading pane replaces it when open */
+  .inbox-body{ flex-direction:column; }
+  .inbox-body .thread-list{ width:100%; border-right:none; }
+  .reading-pane{ display:none; }
+  .inbox-body.has-open-thread .thread-list{ display:none; }
+  .inbox-body.has-open-thread .reading-pane{ display:flex; }
+
+  .rp-back{ display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700;
+    color:var(--text-dim); margin-bottom:12px; }
+  .rp-back:hover{ color:var(--text); }
+  .rp-header{ flex-direction:column; align-items:stretch; }
+  .rp-actions{ margin-top:12px; }
+
+  /* Header search stacks under the title on narrow screens */
+  .list-header-top{ flex-wrap:wrap; }
+  .list-header-top form{ width:100%; }
+  .list-header-top form select,
+  .list-header-top form input[name="q"]{ flex:1; min-width:0; }
+
+  /* Wide/centered pages fit the viewport */
+  .composer{ width:auto; margin:14px; max-width:none; }
+  .page-pad{ padding:18px 16px 80px; }
+  .add-tiles{ grid-template-columns:1fr; }
+  .triage-wrap{ padding:24px 16px 80px; }
+}

@@ -34,7 +34,7 @@
         @endunless
     </div>
 
-    <div class="inbox-body">
+    <div class="inbox-body {{ $openThread ? 'has-open-thread' : '' }}">
         <div class="thread-list">
             {{--
                 The row checkboxes below submit via the form="bulk-form" attribute rather
@@ -108,6 +108,9 @@
                     .then((html) => {
                         pane.innerHTML = html;
                         markSelected(emailId);
+                        // On mobile the panes are stacked; this class hides the
+                        // list and reveals the reading pane full-width.
+                        pane.closest('.inbox-body')?.classList.add('has-open-thread');
                         if (pushUrl) {
                             history.pushState({ emailId }, '', href);
                         }
