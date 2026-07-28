@@ -77,6 +77,8 @@
 @endif
 
 <div class="navrail-foot">
+    @include('partials.portal-switcher')
+
     <a href="{{ route('security.show') }}" class="nav-item {{ request()->routeIs('security.show') ? 'active' : '' }}">
         <svg class="ic"><use href="#i-check"/></svg>Security
     </a>
