@@ -21,41 +21,65 @@
 <body>
     @include('components.icon-sprite')
 
-    <div class="app-shell" x-data="{ drawer: false }">
-        <div class="nav-backdrop" :class="{ show: drawer }" @click="drawer = false" x-cloak></div>
+    @php
+        $onInbox = request()->routeIs('inbox.*') && ! request()->routeIs('accounts.*');
+    @endphp
+    <div class="app-shell">
+        <header class="topbar">
+            <a href="{{ route('inbox.index') }}" class="brand" style="padding:0;">
+                <div class="brand-mark"><svg class="ic-sm" style="color:#fff"><use href="#i-inbox"/></svg></div>
+                <div class="brand-name">Zero</div>
+            </a>
 
-        <aside class="navrail" :class="{ open: drawer }">
-            <x-nav-rail/>
-        </aside>
+            <nav class="topbar-nav">
+                <a href="{{ route('inbox.index') }}" class="{{ $onInbox ? 'active' : '' }}">
+                    <svg class="ic-sm"><use href="#i-inbox"/></svg>Inbox
+                    <span id="unread-badge" class="count hidden"></span>
+                </a>
+                <a href="{{ route('triage.index') }}" class="warn {{ request()->routeIs('triage.*') ? 'active' : '' }}">
+                    <svg class="ic-sm"><use href="#i-sparkle"/></svg>Triage
+                </a>
+                <a href="{{ route('accounts.index') }}" class="{{ request()->routeIs('accounts.*') ? 'active' : '' }}">
+                    <svg class="ic-sm"><use href="#i-users"/></svg>Accounts
+                </a>
+            </nav>
+
+            <div class="topbar-spacer"></div>
+
+            <div class="topbar-actions">
+                <a href="{{ route('compose.create') }}" class="topbar-compose">
+                    <svg class="ic-sm"><use href="#i-plus"/></svg>Compose
+                </a>
+                <button type="button" class="icon-btn" id="footThemeToggle" title="Toggle theme" aria-label="Toggle theme">
+                    <svg class="ic" id="footThemeIcon"><use href="#i-moon"/></svg>
+                </button>
+                <a href="{{ route('security.show') }}" class="icon-btn {{ request()->routeIs('security.show') ? 'active' : '' }}" title="Security" aria-label="Security">
+                    <svg class="ic"><use href="#i-check"/></svg>
+                </a>
+                <form method="POST" action="{{ route('logout') }}" style="display:flex;">
+                    @csrf
+                    <button type="submit" class="icon-btn" title="Log out" aria-label="Log out"><svg class="ic"><use href="#i-x"/></svg></button>
+                </form>
+            </div>
+        </header>
 
         <main class="main">
-            <header class="mobile-topbar">
-                <button type="button" class="icon-btn" @click="drawer = true" aria-label="Open menu">
-                    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </button>
-                <a href="{{ route('inbox.index') }}" class="brand" style="padding:0;">
-                    <div class="brand-mark"><svg class="ic-sm" style="color:#fff"><use href="#i-inbox"/></svg></div>
-                    <div class="brand-name">Zero</div>
-                </a>
-                <button type="button" class="icon-btn" onclick="document.querySelector('input[name=q]')?.focus()" aria-label="Search" style="margin-left:auto;">
-                    <svg class="ic"><use href="#i-search"/></svg>
-                </button>
-            </header>
-
-            <div style="padding: 14px 22px 0;">
-                @if (session('status'))
-                    <div class="flash success"><svg class="ic-sm"><use href="#i-check"/></svg>{{ session('status') }}</div>
-                @endif
-                @if (session('error'))
-                    <div class="flash error"><svg class="ic-sm"><use href="#i-alert"/></svg>{{ session('error') }}</div>
-                @endif
-            </div>
+            @if (session('status') || session('error'))
+                <div style="padding: 14px 22px 0; max-width:1400px; width:100%; margin:0 auto;">
+                    @if (session('status'))
+                        <div class="flash success"><svg class="ic-sm"><use href="#i-check"/></svg>{{ session('status') }}</div>
+                    @endif
+                    @if (session('error'))
+                        <div class="flash error"><svg class="ic-sm"><use href="#i-alert"/></svg>{{ session('error') }}</div>
+                    @endif
+                </div>
+            @endif
 
             @yield('content')
         </main>
 
         <nav class="bottom-nav">
-            <a href="{{ route('inbox.index') }}" class="bn-item {{ request()->routeIs('inbox.*') && ! request()->routeIs('accounts.*') ? 'active' : '' }}">
+            <a href="{{ route('inbox.index') }}" class="bn-item {{ $onInbox ? 'active' : '' }}">
                 <svg class="ic"><use href="#i-inbox"/></svg><span>Inbox</span>
             </a>
             <a href="{{ route('triage.index') }}" class="bn-item {{ request()->routeIs('triage.*') ? 'active' : '' }}">
