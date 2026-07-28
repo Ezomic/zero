@@ -103,6 +103,35 @@ svg{ display:block; flex-shrink:0; }
 .acct-row .name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:600; }
 .acct-row .n{ font-size:11px; color:var(--text-faint); font-weight:700; }
 
+/* ---------- folder rail (collapsible per-account trees) ---------- */
+.rail-accounts{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-right:2px; }
+.rail-filter{ display:flex; align-items:center; gap:7px; margin:0 0 8px; padding:7px 9px;
+  background:var(--bg-2); border:1px solid var(--border); border-radius:9px; color:var(--text-faint); }
+.rail-filter svg{ color:var(--text-faint); }
+.rail-filter input{ border:none; background:none; outline:none; color:var(--text); flex:1; font-family:inherit; font-size:12.5px; min-width:0; }
+.acct-group{ display:flex; flex-direction:column; }
+.acct-head{ display:flex; align-items:center; gap:8px; width:100%; padding:7px 9px; border-radius:8px;
+  background:none; border:none; text-align:left; color:var(--text); }
+.acct-head:hover{ background:var(--bg-2); }
+.acct-chev{ width:13px; height:13px; color:var(--text-faint); transition:transform .15s; flex-shrink:0; transform:rotate(-90deg); }
+.acct-chev.open{ transform:none; }
+.acct-head .acct-dot{ width:9px; height:9px; }
+.acct-em{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:700; }
+.acct-badge{ font-size:10.5px; color:var(--text-faint); font-weight:700; flex-shrink:0; }
+.acct-unread{ background:var(--accent-soft); color:var(--accent-text); font-size:10.5px; font-weight:800; padding:1px 7px; border-radius:20px; flex-shrink:0; }
+.folders{ display:flex; flex-direction:column; gap:1px; padding:1px 0 4px; }
+.folder-item{ display:flex; align-items:center; gap:9px; padding:6px 9px 6px 22px; border-radius:8px;
+  color:var(--text-dim); font-size:12.5px; }
+.folder-item:hover{ background:var(--bg-2); color:var(--text); }
+.folder-item.active{ background:var(--accent-soft); color:var(--accent-text); font-weight:700; }
+.folder-item.depth-1{ padding-left:36px; }
+.folder-item.depth-2{ padding-left:50px; }
+.folder-item .fico{ width:14px; height:14px; color:currentColor; opacity:.8; flex-shrink:0; }
+.folder-item .n{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.folder-item .unreadct{ background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:20px; flex-shrink:0; }
+.folder-item.active .unreadct{ background:var(--accent-text); }
+.folder-empty{ padding:6px 9px 6px 22px; font-size:11.5px; color:var(--text-faint); font-style:italic; }
+
 .navrail-foot{ margin-top:auto; display:flex; flex-direction:column; gap:1px; padding-top:10px; border-top:1px solid var(--border-soft); }
 .navrail-foot .nav-item{ font-weight:500; color:var(--text-faint); }
 
