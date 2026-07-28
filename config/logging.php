@@ -65,6 +65,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Raw IMAP protocol traffic (sent >> / received <<), written only when
+        // IMAP_DEBUG is enabled. Kept out of the main log so it can be tailed
+        // and rotated on its own. Credentials are masked before they land here.
+        'imap' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/imap.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

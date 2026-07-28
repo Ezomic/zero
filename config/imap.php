@@ -164,7 +164,7 @@ return [
         'fetch_flags' => true,
         'soft_fail' => false,
         'rfc822' => true,
-        'debug' => false,
+        'debug' => env('IMAP_DEBUG', false),
         'uid_cache' => true,
         'fallback_date' => '1970-01-01 00:00:00', // some messages ship an unparseable Date header; use a sentinel instead of throwing and aborting the sync
         'boundary' => '/boundary=(.*?(?=;)|(.*))/i',
