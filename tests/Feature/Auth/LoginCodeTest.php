@@ -12,11 +12,29 @@ class LoginCodeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_guest_is_redirected_to_login_from_inbox(): void
+    public function test_guest_sees_the_landing_page_at_root(): void
     {
         $response = $this->get('/');
 
+        $response->assertOk();
+        $response->assertSee('One inbox for every account.', false);
+    }
+
+    public function test_guest_is_redirected_to_login_from_a_protected_route(): void
+    {
+        $response = $this->get('/triage');
+
         $response->assertRedirect('/login');
+    }
+
+    public function test_authenticated_user_gets_the_inbox_at_root_not_the_landing(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertOk();
+        $response->assertDontSee('One inbox for every account.', false);
     }
 
     public function test_authenticated_user_can_log_out(): void

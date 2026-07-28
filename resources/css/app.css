@@ -350,3 +350,56 @@ svg{ display:block; flex-shrink:0; }
 .swatch{ width:24px; height:24px; border-radius:50%; border:2px solid transparent; }
 .swatch.selected{ border-color:var(--text); }
 .test-status{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:9px; background:var(--success-soft); color:var(--success); font-size:12.5px; font-weight:700; margin-top:16px; }
+
+/* ================= LANDING ================= */
+.btn.lg{ padding:12px 22px; font-size:14.5px; border-radius:12px; }
+.lp{ min-height:100vh; display:flex; flex-direction:column; }
+.lp-top{ display:flex; align-items:center; justify-content:space-between; max-width:1180px; width:100%; margin:0 auto;
+  padding:18px 24px; }
+.lp-top-actions{ display:flex; align-items:center; gap:10px; }
+.lp-main{ max-width:1180px; width:100%; margin:0 auto; padding:0 24px; flex:1; }
+
+.lp-hero{ display:grid; grid-template-columns:1.02fr .98fr; gap:52px; align-items:center; padding:64px 0 48px; }
+.lp-eyebrow{ display:inline-flex; align-items:center; gap:9px; font-size:12px; font-weight:800; color:var(--accent-text);
+  letter-spacing:.04em; text-transform:uppercase; margin-bottom:18px; }
+.lp-eyebrow .m{ width:20px; height:2px; border-radius:2px; background:var(--accent); }
+.lp-hero h1{ font-size:clamp(38px,5.4vw,60px); line-height:1.03; letter-spacing:-.035em; font-weight:800; margin:0 0 18px; text-wrap:balance; }
+.lp-hero h1 .soft{ color:var(--text-dim); }
+.lp-lede{ font-size:17.5px; color:var(--text-dim); max-width:48ch; margin:0 0 26px; line-height:1.55; }
+.lp-cta{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.lp-trust{ margin-top:26px; display:flex; gap:20px; flex-wrap:wrap; color:var(--text-faint); font-size:13px; }
+.lp-trust b{ color:var(--text-dim); }
+
+.lp-hero-art{ background:var(--bg-1); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+.lp-art-bar{ display:flex; gap:7px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--border); background:var(--bg-2); }
+.lp-art-bar i{ width:10px; height:10px; border-radius:50%; background:var(--border); }
+.lp-art-bar .t{ margin-left:8px; font-size:11px; color:var(--text-faint); font-family:monospace; }
+.lp-prow{ display:flex; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border-soft); }
+.lp-prow:last-child{ border-bottom:none; }
+.lp-pmain{ min-width:0; flex:1; }
+.lp-pt{ display:flex; justify-content:space-between; gap:8px; }
+.lp-pt .pn{ font-weight:700; font-size:13px; }
+.lp-pt .pm{ color:var(--text-faint); font-size:11px; white-space:nowrap; }
+.lp-prow .ps{ font-size:12.5px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+.lp-pa{ font-size:11px; color:var(--text-faint); display:flex; align-items:center; gap:6px; margin-top:4px; }
+
+.lp-feats{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:20px 0 44px; }
+.lp-feat{ background:var(--bg-1); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:var(--shadow-sm); }
+.lp-fi{ width:42px; height:42px; border-radius:12px; background:var(--accent-soft); color:var(--accent-text); display:flex; align-items:center; justify-content:center; margin-bottom:15px; }
+.lp-feat h3{ margin:0 0 8px; font-size:16.5px; letter-spacing:-.01em; }
+.lp-feat p{ margin:0; color:var(--text-dim); font-size:13.5px; line-height:1.55; }
+.lp-chips{ margin-top:15px; display:flex; gap:6px; flex-wrap:wrap; }
+.lp-chip{ font-size:11px; padding:4px 9px; border-radius:20px; border:1px solid var(--border); color:var(--text-dim); font-weight:700; }
+
+.lp-final{ text-align:center; padding:26px 0 60px; }
+.lp-final h2{ font-size:clamp(26px,3.4vw,36px); letter-spacing:-.025em; margin:0 0 10px; text-wrap:balance; }
+.lp-final p{ color:var(--text-dim); font-size:15px; margin:0 0 22px; }
+
+.lp-foot{ border-top:1px solid var(--border); max-width:1180px; width:100%; margin:0 auto; padding:24px; color:var(--text-faint);
+  font-size:12.5px; display:flex; justify-content:space-between; align-items:center; gap:14px; }
+.lp-foot a:hover{ color:var(--text); }
+
+@media (max-width:860px){
+  .lp-hero{ grid-template-columns:1fr; gap:32px; padding:40px 0 32px; }
+  .lp-feats{ grid-template-columns:1fr; }
+}
