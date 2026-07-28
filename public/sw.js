@@ -1,12 +1,16 @@
-const CACHE = 'mail-v1';
+const CACHE = 'zero-v2';
 
+// Precache the installable shell so the icon/launch works offline. Kept small
+// and same-origin — a failing precache entry would abort the whole install.
 const PRECACHE = [
-    'https://cdn.tailwindcss.com',
+    '/manifest.json',
+    '/icon-192.png',
+    '/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE).then((cache) => cache.addAll(PRECACHE))
+        caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).catch(() => {})
     );
     self.skipWaiting();
 });
@@ -24,20 +28,8 @@ self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
 
-    // Cache-first for Tailwind CDN.
-    if (url.hostname === 'cdn.tailwindcss.com') {
-        event.respondWith(
-            caches.match(request).then((cached) => cached ?? fetch(request).then((res) => {
-                const clone = res.clone();
-                caches.open(CACHE).then((c) => c.put(request, clone));
-                return res;
-            }))
-        );
-        return;
-    }
-
     // Cache-first for Vite-built assets (hashed filenames = immutable).
-    if (url.pathname.startsWith('/build/')) {
+    if (url.origin === self.location.origin && url.pathname.startsWith('/build/')) {
         event.respondWith(
             caches.match(request).then((cached) => cached ?? fetch(request).then((res) => {
                 const clone = res.clone();
@@ -48,8 +40,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Network-first for everything else (HTML, API).
-    // Falls back to cache only when offline.
+    // Network-first for everything else (HTML, API); fall back to cache offline.
     if (request.method === 'GET') {
         event.respondWith(
             fetch(request)

@@ -4,12 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>@hasSection('title')@yield('title') &middot; @endif Zero</title>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#EF6A5E">
+    @include('partials.pwa-head')
     <script>
         (function () {
             const stored = localStorage.getItem('theme');
@@ -97,11 +93,6 @@
         </nav>
     </div>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
-        }
-    </script>
 
     @auth
         <script>
