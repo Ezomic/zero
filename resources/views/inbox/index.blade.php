@@ -9,14 +9,7 @@
                 <svg class="ic-sm"><use href="#i-search"/></svg>
                 <input type="text" name="q" value="{{ request('q') }}" placeholder="Search all mail&hellip;">
                 @if ($selectedAccountId)<input type="hidden" name="account" value="{{ $selectedAccountId }}">@endif
-            </form>
-            <form method="GET" action="{{ route('inbox.index') }}">
-                <select name="account" onchange="this.form.submit()" class="tb-account">
-                    <option value="">All accounts</option>
-                    @foreach ($accounts as $acc)
-                        <option value="{{ $acc->id }}" @selected($selectedAccountId == $acc->id)>{{ $acc->email_address }}</option>
-                    @endforeach
-                </select>
+                @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
             </form>
         </div>
 
@@ -26,10 +19,18 @@
             </div>
 
             <div class="pane list-pane">
+                @php $selectedAccount = $selectedAccountId ? $accounts->firstWhere('id', $selectedAccountId) : null; @endphp
                 <div class="pane-head">
                     <div>
                         <h2>{{ $showArchived ? 'Archived' : \App\Models\MailFolder::displayName($folder) }}</h2>
-                        <div class="sub">{{ $emails->total() }} {{ Str::plural('conversation', $emails->total()) }}</div>
+                        <div class="sub">
+                            {{ $emails->total() }} {{ Str::plural('conversation', $emails->total()) }}
+                            @if ($selectedAccount)
+                                · <span style="color:{{ $selectedAccount->color }}">●</span> {{ $selectedAccount->email_address }}
+                            @else
+                                · all accounts
+                            @endif
+                        </div>
                     </div>
                     <div class="sort">Newest <svg class="ic-sm"><use href="#i-chev"/></svg></div>
                 </div>
