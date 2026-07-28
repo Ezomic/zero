@@ -3,10 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <title>Zero &mdash; one inbox for every account</title>
-    <meta name="theme-color" content="#EF6A5E">
+    @include('partials.pwa-head')
     <script>
         (function () {
             const stored = localStorage.getItem('theme');
