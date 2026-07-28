@@ -21,12 +21,27 @@
 <body>
     @include('components.icon-sprite')
 
-    <div class="app-shell">
-        <aside class="navrail">
+    <div class="app-shell" x-data="{ drawer: false }">
+        <div class="nav-backdrop" :class="{ show: drawer }" @click="drawer = false" x-cloak></div>
+
+        <aside class="navrail" :class="{ open: drawer }">
             <x-nav-rail/>
         </aside>
 
         <main class="main">
+            <header class="mobile-topbar">
+                <button type="button" class="icon-btn" @click="drawer = true" aria-label="Open menu">
+                    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <a href="{{ route('inbox.index') }}" class="brand" style="padding:0;">
+                    <div class="brand-mark"><svg class="ic-sm" style="color:#fff"><use href="#i-inbox"/></svg></div>
+                    <div class="brand-name">Zero</div>
+                </a>
+                <button type="button" class="icon-btn" onclick="document.querySelector('input[name=q]')?.focus()" aria-label="Search" style="margin-left:auto;">
+                    <svg class="ic"><use href="#i-search"/></svg>
+                </button>
+            </header>
+
             <div style="padding: 14px 22px 0;">
                 @if (session('status'))
                     <div class="flash success"><svg class="ic-sm"><use href="#i-check"/></svg>{{ session('status') }}</div>
@@ -38,6 +53,24 @@
 
             @yield('content')
         </main>
+
+        <nav class="bottom-nav">
+            <a href="{{ route('inbox.index') }}" class="bn-item {{ request()->routeIs('inbox.*') && ! request()->routeIs('accounts.*') ? 'active' : '' }}">
+                <svg class="ic"><use href="#i-inbox"/></svg><span>Inbox</span>
+            </a>
+            <a href="{{ route('triage.index') }}" class="bn-item {{ request()->routeIs('triage.*') ? 'active' : '' }}">
+                <svg class="ic"><use href="#i-sparkle"/></svg><span>Triage</span>
+            </a>
+            <a href="{{ route('compose.create') }}" class="bn-item bn-fab">
+                <svg class="ic"><use href="#i-plus"/></svg><span>Compose</span>
+            </a>
+            <a href="{{ route('drafts.index') }}" class="bn-item {{ request()->routeIs('drafts.*') ? 'active' : '' }}">
+                <svg class="ic"><use href="#i-draft"/></svg><span>Drafts</span>
+            </a>
+            <a href="{{ route('accounts.index') }}" class="bn-item {{ request()->routeIs('accounts.*') ? 'active' : '' }}">
+                <svg class="ic"><use href="#i-users"/></svg><span>Accounts</span>
+            </a>
+        </nav>
     </div>
 
     <script>

@@ -2,6 +2,9 @@
     $rpInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $email->from_name ?: $email->from_address), 0, 2)) ?: '??';
 @endphp
 <div class="rp-header">
+    <a href="{{ route('inbox.index') }}" class="rp-back" aria-label="Back to inbox">
+        <svg class="ic-sm"><use href="#i-back"/></svg> Inbox
+    </a>
     <div>
         <h2>{{ $email->subject }}</h2>
         <div class="rp-chips">
