@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>@hasSection('title')@yield('title') &middot; @endif Zero</title>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#7C6FF0">
+    <meta name="theme-color" content="#EF6A5E">
     <script>
         (function () {
             const stored = localStorage.getItem('theme');

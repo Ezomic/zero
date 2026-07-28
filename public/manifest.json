@@ -4,8 +4,8 @@
     "description": "Your personal mail client",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0B0D12",
-    "theme_color": "#7C6FF0",
+    "background_color": "#171210",
+    "theme_color": "#EF6A5E",
     "icons": [
         {
             "src": "/favicon.ico",
