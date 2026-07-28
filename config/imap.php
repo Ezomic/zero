@@ -165,7 +165,11 @@ return [
         'soft_fail' => false,
         'rfc822' => true,
         'debug' => env('IMAP_DEBUG', false),
-        'uid_cache' => true,
+        // Must stay false: webklex caches the UID list per connection and only
+        // clears it on SELECT, not the EXAMINE our sync uses. With the cache on,
+        // getUid() would hand a later folder a previous folder's UIDs (see
+        // ZERO-61). Off, it re-reads the currently-examined folder each time.
+        'uid_cache' => false,
         'fallback_date' => '1970-01-01 00:00:00', // some messages ship an unparseable Date header; use a sentinel instead of throwing and aborting the sync
         'boundary' => '/boundary=(.*?(?=;)|(.*))/i',
         'message_key' => 'list',
