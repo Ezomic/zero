@@ -147,14 +147,7 @@ class ImapSyncService
     {
         $account->update(['sync_status' => 'syncing', 'sync_status_since' => now(), 'sync_error' => null]);
 
-        // With IMAP_DEBUG on, webklex echoes every sent command (">> ") and
-        // received line ("<< ") to stdout. Capture that into the dedicated imap
-        // log (credentials masked) instead of the worker's stdout, so the exact
-        // request/response conversation is available when a sync fails.
-        $logImapTraffic = (bool) config('imap.options.debug');
-        if ($logImapTraffic) {
-            ob_start($this->imapTrafficLogger($account), 4096);
-        }
+        $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
         try {
             $client = $this->buildClient($account);
@@ -223,16 +216,34 @@ class ImapSyncService
             ]);
             throw $e;
         } finally {
-            if ($logImapTraffic) {
+            if ($capturingImapTraffic) {
                 ob_end_flush();
             }
         }
     }
 
     /**
+     * Begin capturing webklex's echoed IMAP protocol traffic when IMAP_DEBUG is
+     * on, so it is masked into the imap log rather than leaking to stdout — or,
+     * for web-context callers (fetchBody/applyAction), into the HTTP response
+     * body, which would expose the account's credentials. Returns whether an
+     * output buffer was opened; the caller must ob_end_flush() it in a finally.
+     */
+    protected function beginImapTrafficCapture(MailAccount $account): bool
+    {
+        if (! (bool) config('imap.options.debug')) {
+            return false;
+        }
+
+        ob_start($this->imapTrafficLogger($account), 4096);
+
+        return true;
+    }
+
+    /**
      * Output-buffer handler that routes webklex's echoed IMAP protocol traffic
      * to the dedicated imap log channel with credentials masked. Returns an
-     * empty string so the raw traffic never reaches the worker's stdout.
+     * empty string so the raw traffic never reaches stdout or the response body.
      */
     protected function imapTrafficLogger(MailAccount $account): \Closure
     {
@@ -262,37 +273,45 @@ class ImapSyncService
     public function fetchBody(Email $email): void
     {
         $account = $email->requireMailAccount();
-        $remotePath = $email->remote_folder_path ?: $email->folder;
+        $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
-        $client = $this->buildClient($account);
-        $client->connect();
+        try {
+            $remotePath = $email->remote_folder_path ?: $email->folder;
 
-        $folder = $client->getFolder($remotePath);
+            $client = $this->buildClient($account);
+            $client->connect();
 
-        if (! $folder) {
-            throw new RuntimeException("Remote folder not found: {$remotePath}");
-        }
+            $folder = $client->getFolder($remotePath);
 
-        $message = $folder->messages()->fetchBody(true)->getMessageByUid((int) $email->uid);
+            if (! $folder) {
+                throw new RuntimeException("Remote folder not found: {$remotePath}");
+            }
 
-        $email->update([
-            'body_html' => $message->getHTMLBody() ?: null,
-            'body_text' => $message->getTextBody() ?: null,
-            'has_attachments' => $message->hasAttachments(),
-        ]);
+            $message = $folder->messages()->fetchBody(true)->getMessageByUid((int) $email->uid);
 
-        if ($message->hasAttachments() && $email->attachments()->count() === 0) {
-            foreach ($message->getAttachments() as $attachment) {
-                $path = "email-attachments/{$account->id}/{$email->id}/".$attachment->getName();
-                Storage::disk('local')->put($path, $attachment->getContent());
+            $email->update([
+                'body_html' => $message->getHTMLBody() ?: null,
+                'body_text' => $message->getTextBody() ?: null,
+                'has_attachments' => $message->hasAttachments(),
+            ]);
 
-                EmailAttachment::create([
-                    'email_id' => $email->id,
-                    'filename' => $attachment->getName(),
-                    'mime_type' => $attachment->getMimeType(),
-                    'size_bytes' => $attachment->getSize(),
-                    'storage_path' => $path,
-                ]);
+            if ($message->hasAttachments() && $email->attachments()->count() === 0) {
+                foreach ($message->getAttachments() as $attachment) {
+                    $path = "email-attachments/{$account->id}/{$email->id}/".$attachment->getName();
+                    Storage::disk('local')->put($path, $attachment->getContent());
+
+                    EmailAttachment::create([
+                        'email_id' => $email->id,
+                        'filename' => $attachment->getName(),
+                        'mime_type' => $attachment->getMimeType(),
+                        'size_bytes' => $attachment->getSize(),
+                        'storage_path' => $path,
+                    ]);
+                }
+            }
+        } finally {
+            if ($capturingImapTraffic) {
+                ob_end_flush();
             }
         }
     }
@@ -314,31 +333,39 @@ class ImapSyncService
     public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
     {
         $account = $email->requireMailAccount();
-        $remotePath = $email->remote_folder_path ?: $email->folder;
+        $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
-        $client = $this->buildClient($account);
-        $client->connect();
+        try {
+            $remotePath = $email->remote_folder_path ?: $email->folder;
 
-        $folder = $client->getFolder($remotePath);
+            $client = $this->buildClient($account);
+            $client->connect();
 
-        if (! $folder) {
-            return;
+            $folder = $client->getFolder($remotePath);
+
+            if (! $folder) {
+                return;
+            }
+
+            $message = $folder->messages()->getMessageByUid((int) ($sourceUid ?? $email->uid));
+
+            if (str_starts_with($action, 'move:')) {
+                $this->applyMove($email, $account, $message, substr($action, 5));
+
+                return;
+            }
+
+            match ($action) {
+                'mark_read' => $message->setFlag('Seen'),
+                'mark_unread' => $message->unsetFlag('Seen'),
+                'delete' => $message->delete(expunge: true, trash_path: $this->guessTrashPath($client)),
+                default => null,
+            };
+        } finally {
+            if ($capturingImapTraffic) {
+                ob_end_flush();
+            }
         }
-
-        $message = $folder->messages()->getMessageByUid((int) ($sourceUid ?? $email->uid));
-
-        if (str_starts_with($action, 'move:')) {
-            $this->applyMove($email, $account, $message, substr($action, 5));
-
-            return;
-        }
-
-        match ($action) {
-            'mark_read' => $message->setFlag('Seen'),
-            'mark_unread' => $message->unsetFlag('Seen'),
-            'delete' => $message->delete(expunge: true, trash_path: $this->guessTrashPath($client)),
-            default => null,
-        };
     }
 
     protected function applyMove(Email $email, MailAccount $account, Message $message, string $targetLocalName): void
