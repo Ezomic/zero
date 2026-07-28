@@ -9,6 +9,7 @@ use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Support\MimeHeader;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -627,11 +628,11 @@ class ImapSyncService
         $threadId = $references[0] ?? $inReplyTo ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
 
         $fromAddress = $message->getFrom()[0]->mail ?? null;
-        $fromName = $message->getFrom()[0]->personal ?? null;
+        $fromName = MimeHeader::decode($message->getFrom()[0]->personal ?? null);
         $toAddresses = $this->addressesToArray($message->getTo()?->toArray());
         $ccAddresses = $this->addressesToArray($message->getCc()?->toArray());
 
-        $subject = $message->getSubject()->toString() ?: '(no subject)';
+        $subject = MimeHeader::decode($message->getSubject()->toString()) ?: '(no subject)';
         $sentAt = $message->getDate()?->toDate();
         $isRead = $message->getFlags()->has('Seen');
 
