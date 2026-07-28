@@ -119,4 +119,57 @@ class MailAccountCrudTest extends TestCase
 
         $this->assertDatabaseHas('mail_accounts', ['id' => $account->id]);
     }
+
+    public function test_reconnect_is_offered_for_a_healthy_gmail_account(): void
+    {
+        $user = User::factory()->create();
+        MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'provider' => MailAccount::PROVIDER_GMAIL,
+            'email_address' => 'me@gmail.com',
+            'sync_status' => 'idle',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('accounts.index'))
+            ->assertOk()
+            ->assertSee('Reconnect')
+            ->assertSee(route('auth.google.redirect'), false);
+    }
+
+    public function test_reconnect_is_offered_for_an_inactive_gmail_account_alongside_reenable(): void
+    {
+        $user = User::factory()->create();
+        MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'provider' => MailAccount::PROVIDER_GMAIL,
+            'email_address' => 'broken@gmail.com',
+            'sync_status' => 'error',
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('accounts.index'))
+            ->assertOk()
+            ->assertSee('Re-enable')
+            ->assertSee('Reconnect')
+            ->assertSee(route('auth.google.redirect'), false);
+    }
+
+    public function test_healthy_custom_imap_account_does_not_offer_reconnect(): void
+    {
+        $user = User::factory()->create();
+        MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'provider' => MailAccount::PROVIDER_IMAP,
+            'sync_status' => 'idle',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('accounts.index'))
+            ->assertOk()
+            ->assertDontSee('Reconnect');
+    }
 }

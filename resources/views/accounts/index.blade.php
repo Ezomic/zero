@@ -71,14 +71,18 @@
                                 @csrf
                                 <button class="btn sm" style="color:var(--warning); border-color:var(--warning);">Re-enable</button>
                             </form>
-                        @elseif ($account->sync_status === 'error')
-                            @if ($account->provider === 'gmail')
-                                <a href="{{ route('auth.google.redirect') }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Reconnect</a>
-                            @elseif ($account->provider === 'outlook')
-                                <a href="{{ route('auth.microsoft.redirect') }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Reconnect</a>
-                            @else
-                                <a href="{{ route('accounts.edit', $account) }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Update credentials</a>
-                            @endif
+                        @endif
+                        {{-- Reconnect is always available for OAuth accounts — healthy, erroring, or
+                             inactive — so a token nearing/at expiry can be re-consented for a fresh
+                             refresh token; the callback re-links the existing account by email and
+                             re-activates it. Danger-styled when it needs attention, subtle otherwise. --}}
+                        @php $needsAttention = ! $account->is_active || $account->sync_status === 'error'; @endphp
+                        @if ($account->provider === 'gmail')
+                            <a href="{{ route('auth.google.redirect') }}" class="btn sm{{ $needsAttention ? '' : ' ghost' }}" @if ($needsAttention) style="color:var(--danger); border-color:var(--danger);" @endif>Reconnect</a>
+                        @elseif ($account->provider === 'outlook')
+                            <a href="{{ route('auth.microsoft.redirect') }}" class="btn sm{{ $needsAttention ? '' : ' ghost' }}" @if ($needsAttention) style="color:var(--danger); border-color:var(--danger);" @endif>Reconnect</a>
+                        @elseif ($needsAttention)
+                            <a href="{{ route('accounts.edit', $account) }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Update credentials</a>
                         @endif
                         <a href="{{ route('accounts.edit', $account) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-pencil"/></svg>Edit</a>
                         <form method="POST" action="{{ route('accounts.sync', $account) }}">
