@@ -11,6 +11,15 @@
                 @if ($selectedAccountId)<input type="hidden" name="account" value="{{ $selectedAccountId }}">@endif
                 @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
             </form>
+            <form method="GET" action="{{ route('inbox.index') }}">
+                @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
+                <select name="account" onchange="this.form.submit()" class="tb-account" title="Filter by account">
+                    <option value="">All accounts</option>
+                    @foreach ($accounts as $acc)
+                        <option value="{{ $acc->id }}" @selected($selectedAccountId == $acc->id)>{{ $acc->email_address }}</option>
+                    @endforeach
+                </select>
+            </form>
         </div>
 
         <div class="inbox-grid {{ $openThread ? 'has-open-thread' : '' }}">
