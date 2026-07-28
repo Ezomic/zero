@@ -10,6 +10,7 @@ use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Webklex\PHPIMAP\Client;
@@ -145,6 +146,15 @@ class ImapSyncService
     {
         $account->update(['sync_status' => 'syncing', 'sync_status_since' => now(), 'sync_error' => null]);
 
+        // With IMAP_DEBUG on, webklex echoes every sent command (">> ") and
+        // received line ("<< ") to stdout. Capture that into the dedicated imap
+        // log (credentials masked) instead of the worker's stdout, so the exact
+        // request/response conversation is available when a sync fails.
+        $logImapTraffic = (bool) config('imap.options.debug');
+        if ($logImapTraffic) {
+            ob_start($this->imapTrafficLogger($account), 4096);
+        }
+
         try {
             $client = $this->buildClient($account);
             $client->connect();
@@ -211,7 +221,37 @@ class ImapSyncService
                 'sync_error' => $e->getMessage(),
             ]);
             throw $e;
+        } finally {
+            if ($logImapTraffic) {
+                ob_end_flush();
+            }
         }
+    }
+
+    /**
+     * Output-buffer handler that routes webklex's echoed IMAP protocol traffic
+     * to the dedicated imap log channel with credentials masked. Returns an
+     * empty string so the raw traffic never reaches the worker's stdout.
+     */
+    protected function imapTrafficLogger(MailAccount $account): \Closure
+    {
+        return function (string $buffer) use ($account): string {
+            foreach (preg_split('/\r?\n/', $buffer) ?: [] as $line) {
+                if (trim($line) === '') {
+                    continue;
+                }
+
+                // Never persist credentials: mask everything after the LOGIN
+                // user argument and after an AUTHENTICATE mechanism (covers the
+                // app password and any OAuth token).
+                $line = (string) preg_replace('/(\bLOGIN\s+\S+\s+).*/i', '$1***', $line);
+                $line = (string) preg_replace('/(\bAUTHENTICATE\s+\S+\s*).*/i', '$1***', $line);
+
+                Log::channel('imap')->debug("account {$account->id}: ".$line);
+            }
+
+            return '';
+        };
     }
 
     /**
