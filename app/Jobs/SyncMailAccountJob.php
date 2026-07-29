@@ -6,13 +6,14 @@ use App\Models\MailAccount;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
-class SyncMailAccountJob implements ShouldQueue
+class SyncMailAccountJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -30,6 +31,19 @@ class SyncMailAccountJob implements ShouldQueue
     // time. Incremental runs (last_uid > 0) are fast; only the initial bulk
     // fetch of a large mailbox needs this headroom.
     public int $timeout = 1800;
+
+    // WithoutOverlapping below stops duplicates *running* concurrently, but a
+    // dropped duplicate still has to be picked up by a worker first. When one
+    // sync holds the worker for minutes, the 5-minutely scheduler stacks
+    // hundreds of them (894 observed on prod). ShouldBeUnique keeps them out of
+    // the queue entirely. Deliberately shorter than the 1800s timeout: a hung
+    // sync shouldn't be able to block dispatch for its whole timeout window.
+    public int $uniqueFor = 600;
+
+    public function uniqueId(): string
+    {
+        return (string) $this->account->id;
+    }
 
     // Space out retries: 1 min, then 5 min — gives transient issues time to
     // resolve without holding up the queue for long.

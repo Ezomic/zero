@@ -38,6 +38,12 @@ class ApplyEmailFlagJob implements ShouldQueue
         ?string $sourceUid = null,
     ) {
         $this->sourceUid = $sourceUid;
+
+        // Mirror-backs run on their own queue with a dedicated worker.
+        // SyncMailAccountJob can hold a worker for up to its 1800s timeout, and
+        // on a shared queue that starves every flag change behind it — a bulk
+        // triage would sit unapplied for hours while syncs cycled.
+        $this->onQueue('flags');
     }
 
     public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
