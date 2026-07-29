@@ -46,6 +46,7 @@
                 <a href="{{ route('compose.create') }}" class="topbar-compose">
                     <svg class="ic-sm"><use href="#i-plus"/></svg>Compose
                 </a>
+                @include('partials.portal-switcher')
                 <button type="button" class="icon-btn" id="footThemeToggle" title="Toggle theme" aria-label="Toggle theme">
                     <svg class="ic" id="footThemeIcon"><use href="#i-moon"/></svg>
                 </button>

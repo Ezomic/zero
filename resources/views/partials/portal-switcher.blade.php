@@ -7,13 +7,13 @@
 
 @if (! empty($portalApps))
     <div x-data="{ open: false }" style="position:relative;" @keydown.escape.window="open = false">
-        <button type="button" class="nav-item" style="width:100%;" @click="open = ! open" :aria-expanded="open" aria-label="Switch app">
+        <button type="button" class="icon-btn" @click="open = ! open" :aria-expanded="open" aria-label="Apps" title="Switch app">
             <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="3" width="7" height="7" rx="1"/>
                 <rect x="14" y="3" width="7" height="7" rx="1"/>
                 <rect x="3" y="14" width="7" height="7" rx="1"/>
                 <rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>Apps
+            </svg>
         </button>
 
         <div
@@ -21,7 +21,7 @@
             x-cloak
             x-transition
             @click.outside="open = false"
-            style="position:absolute; bottom:calc(100% + 6px); left:0; z-index:50; width:260px; padding:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg); box-shadow:var(--shadow);"
+            style="position:absolute; top:calc(100% + 8px); right:0; z-index:50; width:260px; padding:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg-1); box-shadow:var(--shadow);"
         >
             <div style="padding:4px 6px 8px; font-size:11px; color:var(--text-dim);">Your apps</div>
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:4px;">
