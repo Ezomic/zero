@@ -20,9 +20,18 @@ class MailAccountController extends Controller
         return view('accounts.index', compact('accounts'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('accounts.create');
+        $template = null;
+
+        if ($request->filled('from')) {
+            $template = $this->currentUser()
+                ->mailAccounts()
+                ->where('provider', MailAccount::PROVIDER_IMAP)
+                ->find($request->integer('from'));
+        }
+
+        return view('accounts.create', compact('template'));
     }
 
     /**

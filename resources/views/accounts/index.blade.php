@@ -85,6 +85,9 @@
                             <a href="{{ route('accounts.edit', $account) }}" class="btn sm" style="color:var(--danger); border-color:var(--danger);">Update credentials</a>
                         @endif
                         <a href="{{ route('accounts.edit', $account) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-pencil"/></svg>Edit</a>
+                        @if ($account->provider === 'imap')
+                            <a href="{{ route('accounts.create', ['from' => $account->id]) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-plus"/></svg>Duplicate</a>
+                        @endif
                         <form method="POST" action="{{ route('accounts.sync', $account) }}">
                             @csrf
                             <button class="btn sm ghost"><svg class="ic-sm"><use href="#i-refresh"/></svg>Sync</button>
