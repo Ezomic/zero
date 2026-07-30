@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 
@@ -337,28 +338,34 @@ class ImapSyncService
 
         try {
             $remotePath = $email->remote_folder_path ?: $email->folder;
+            $uid = (int) ($sourceUid ?? $email->uid);
 
             $client = $this->buildClient($account);
             $client->connect();
 
-            $folder = $client->getFolder($remotePath);
-
-            if (! $folder) {
-                return;
-            }
-
-            $message = $folder->messages()->getMessageByUid((int) ($sourceUid ?? $email->uid));
-
+            // Moves need the destination UID handed back (see applyMove), which
+            // only the high-level API gives us, so they keep paying for the
+            // message fetch. Everything else is a UID-addressed command that
+            // needs no message object at all.
             if (str_starts_with($action, 'move:')) {
-                $this->applyMove($email, $account, $message, substr($action, 5));
+                $folder = $client->getFolder($remotePath);
+
+                if (! $folder) {
+                    return;
+                }
+
+                $this->applyMove($email, $account, $folder->messages()->getMessageByUid($uid), substr($action, 5));
 
                 return;
             }
+
+            $connection = $client->getConnection();
+            $connection->selectFolder($remotePath);
 
             match ($action) {
-                'mark_read' => $message->setFlag('Seen'),
-                'mark_unread' => $message->unsetFlag('Seen'),
-                'delete' => $message->delete(expunge: true, trash_path: $this->guessTrashPath($client)),
+                'mark_read' => $this->assertImapOk($connection->store(['\Seen'], $uid, null, '+'), 'mark_read', $uid),
+                'mark_unread' => $this->assertImapOk($connection->store(['\Seen'], $uid, null, '-'), 'mark_unread', $uid),
+                'delete' => $this->applyDelete($account, $client, $uid),
                 default => null,
             };
         } finally {
@@ -490,6 +497,53 @@ class ImapSyncService
             return (int) ($folder->examine()['exists'] ?? 0);
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Deleting is "move to the server's trash, then expunge", addressed purely
+     * by UID. Fetching the message first cost ~24s on a large Gmail mailbox
+     * (ZERO-78) and told us nothing the UID doesn't.
+     */
+    protected function applyDelete(MailAccount $account, Client $client, int $uid): void
+    {
+        $trashPath = $this->trashPathFor($account, $client);
+        $connection = $client->getConnection();
+
+        if ($trashPath === null) {
+            // No trash to move into: flag and expunge in place, which is what
+            // the high-level delete() falls back to.
+            $this->assertImapOk($connection->store(['\Deleted'], $uid, null, '+'), 'delete', $uid);
+            $connection->expunge();
+
+            return;
+        }
+
+        $this->assertImapOk($connection->moveMessage($trashPath, $uid), 'delete', $uid);
+        $connection->expunge();
+    }
+
+    /**
+     * Prefer the trash folder we already recorded during sync; enumerating the
+     * folder tree to guess it cost ~3s on every single action.
+     */
+    protected function trashPathFor(MailAccount $account, Client $client): ?string
+    {
+        $recorded = MailFolder::where('mail_account_id', $account->id)
+            ->where('local_name', 'TRASH')
+            ->value('remote_path');
+
+        if (is_string($recorded) && $recorded !== '') {
+            return $recorded;
+        }
+
+        return $this->guessTrashPath($client);
+    }
+
+    protected function assertImapOk(Response $response, string $action, int $uid): void
+    {
+        if (! $response->boolean()) {
+            throw new RuntimeException("IMAP {$action} failed for uid {$uid}");
         }
     }
 
