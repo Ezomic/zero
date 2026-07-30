@@ -38,8 +38,13 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
+            // Sync, queue workers and web requests all write to one SQLite file.
+            // A long sync (importing thousands of trashed messages) was pushing
+            // other writers past the 60s default, and a writer that gives up
+            // takes the whole job down — including, on the sync, the release of
+            // its own overlap lock (ZERO-80). Wait longer instead of throwing.
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 180_000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
             'synchronous' => null,
             'transaction_mode' => 'DEFERRED',
         ],
