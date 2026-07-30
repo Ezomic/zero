@@ -12,6 +12,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 
 class SyncMailAccountJob implements ShouldBeUnique, ShouldQueue
 {
@@ -67,11 +68,31 @@ class SyncMailAccountJob implements ShouldBeUnique, ShouldQueue
     /** @return array<int, object> */
     public function middleware(): array
     {
-        return [
-            (new WithoutOverlapping((string) $this->account->id))
-                ->dontRelease()
-                ->expireAfter($this->timeout + 60),
-        ];
+        return [$this->overlapMiddleware()];
+    }
+
+    protected function overlapMiddleware(): WithoutOverlapping
+    {
+        return (new WithoutOverlapping((string) $this->account->id))
+            ->dontRelease()
+            ->expireAfter($this->timeout + 60);
+    }
+
+    /**
+     * WithoutOverlapping frees its lock in a finally block, but that release is
+     * itself a cache write. When the sync dies *because* the database is
+     * locked, the release fails too and the lock survives its full expireAfter
+     * window — during which every dispatched sync for this account is silently
+     * discarded, so the account can sit unsynced for half an hour at a time
+     * (ZERO-80). Force it open once we know the job is done with it.
+     */
+    protected function releaseOverlapLock(): void
+    {
+        try {
+            Cache::lock($this->overlapMiddleware()->getLockKey($this))->forceRelease();
+        } catch (\Throwable) {
+            // Best effort — expireAfter is still there as the backstop.
+        }
     }
 
     public function handle(ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): void
@@ -91,6 +112,8 @@ class SyncMailAccountJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+        $this->releaseOverlapLock();
+
         $updates = [
             'sync_status' => 'error',
             'sync_status_since' => now(),
