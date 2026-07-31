@@ -10,7 +10,8 @@ instant new-mail delivery.
 ## Stack
 
 - **PHP 8.4, Laravel 13** — Blade + Alpine.js, no Inertia, no Vue, no Livewire
-- **SQLite** — single file at `database/database.sqlite`
+- **SQLite** — mail data in `database/database.sqlite`, queue/cache/sessions in
+  `database/system.sqlite` (see gotcha 7)
 - **Tailwind CSS v4** — utility classes in Blade views
 - **webklex/laravel-imap** — IMAP reading and IDLE
 - **Laravel Reverb** — WebSocket server for real-time browser updates
@@ -263,6 +264,18 @@ page as "since X ago".
 6. **Queue worker recycles hourly** — `--max-time=3600` causes the worker to
    exit cleanly after 1 hour; launchd restarts it. This picks up code changes
    after deploys without needing a manual restart.
+
+7. **Two SQLite files, on purpose** — `jobs`, `job_batches`, `failed_jobs`,
+   `cache`, `cache_locks` and `sessions` live in `database/system.sqlite` via
+   the `sqlite_system` connection; everything else is in
+   `database/database.sqlite`. They were one file until ZERO-80: a queue worker
+   polls `jobs` with `lockForUpdate` several times a second, and that traffic
+   contended with sync writes until one side hit the busy timeout and died.
+   The sync then couldn't release its own `WithoutOverlapping` lock, because
+   that release is a cache write against the same locked file, so the account
+   sat unsynced for the full 31-minute `expireAfter` window. Anything
+   high-frequency and non-mail belongs on `sqlite_system`; don't put mail
+   tables there, cross-database joins don't work.
 
 ## Testing
 

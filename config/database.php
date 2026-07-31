@@ -49,6 +49,27 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        // Queue, cache and sessions live in their own SQLite file. They are the
+        // highest-frequency writers in the app — a queue worker polls `jobs`
+        // with lockForUpdate several times a second — and on the mail database
+        // that traffic contended with sync writes until one side gave up
+        // (ZERO-80). Worse, WithoutOverlapping releases its lock through the
+        // cache: when the mail database was the thing that was locked, the
+        // release failed too and the sync stayed blocked for the full 31-minute
+        // expireAfter window. Separate files means separate write locks, so a
+        // busy sync can no longer starve the queue or lock itself out.
+        'sqlite_system' => [
+            'driver' => 'sqlite',
+            'url' => env('DB_SYSTEM_URL'),
+            'database' => env('DB_SYSTEM_DATABASE', database_path('system.sqlite')),
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 180_000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
+            'synchronous' => null,
+            'transaction_mode' => 'DEFERRED',
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
