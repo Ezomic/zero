@@ -32,6 +32,7 @@
             @forelse ($accounts as $account)
                 @php
                     $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $account->display_name ?: $account->email_address), 0, 2)) ?: '??';
+                    $backlog = $backlogs[$account->id];
                 @endphp
                 <div class="acct-card">
                     <div class="acct-card-top">
@@ -63,7 +64,38 @@
                                 @endif
                             </span>
                         @endif
+
+                        {{-- A sync status of "idle" only says reading worked. It says nothing
+                             about whether the archives/deletes/reads you just did have reached
+                             the server, which is how 2,767 triaged messages sat unapplied for
+                             hours with the card showing green (ZERO-77). --}}
+                        @if ($account->sync_status !== 'idle' && $account->last_synced_at)
+                            <span style="color:var(--text-faint);">&middot; last synced {{ $account->last_synced_at->diffForHumans() }}</span>
+                        @endif
+
+                        @if ($backlog->pending > 0)
+                            <span class="pill {{ $backlog->isStalled() ? 'danger' : 'warn' }}">
+                                <svg class="ic-sm"><use href="#i-{{ $backlog->isStalled() ? 'alert' : 'refresh' }}"/></svg>
+                                {{ $backlog->pending }} waiting to reach the server
+                            </span>
+                            @if ($backlog->oldestQueuedAt)
+                                <span style="color:var(--text-faint);">&middot; oldest {{ $backlog->oldestQueuedAt->diffForHumans() }}</span>
+                            @endif
+                        @endif
+
+                        @if ($backlog->abandoned > 0)
+                            <span class="pill danger">
+                                <svg class="ic-sm"><use href="#i-alert"/></svg>
+                                {{ $backlog->abandoned }} gave up after {{ \App\Models\PendingMirrorAction::MAX_ATTEMPTS }} attempts
+                            </span>
+                        @endif
                     </div>
+
+                    @if ($backlog->isStalled())
+                        <div class="acct-status" style="color:var(--danger); font-size:12px;">
+                            Nothing has drained for {{ $backlog->oldestQueuedAt->diffForHumans(null, true) }}. Check the queue worker.
+                        </div>
+                    @endif
 
                     <div class="acct-card-foot">
                         @if (! $account->is_active)
