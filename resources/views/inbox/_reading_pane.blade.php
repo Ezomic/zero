@@ -6,7 +6,12 @@
         <svg class="ic-sm"><use href="#i-back"/></svg> Inbox
     </a>
     <div>
-        <h2>{{ $email->subject }}</h2>
+        <h2>
+            {{ $email->subject }}
+            @if (count($messages) > 1)
+                <span class="rp-count" title="{{ count($messages) }} messages in this conversation">{{ count($messages) }}</span>
+            @endif
+        </h2>
         <div class="rp-chips">
             <div class="chip">
                 <span class="dot" style="background:{{ $email->mailAccount->color }}">{{ $rpInitials }}</span>
@@ -72,7 +77,9 @@
 @endif
 
 <div class="rp-body">
+    {{-- Oldest first, so the last one is the newest: that is the one worth
+         reading on open, and the rest collapse to a summary line. --}}
     @foreach ($messages as $message)
-        @include('inbox._message', ['message' => $message])
+        @include('inbox._message', ['message' => $message, 'expanded' => $loop->last])
     @endforeach
 </div>

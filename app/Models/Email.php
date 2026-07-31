@@ -113,6 +113,24 @@ class Email extends Model
     }
 
     /**
+     * True when the account owner wrote this message. Folder alone isn't
+     * enough inside a thread: your own reply can be synced under a label or a
+     * custom folder and is still yours, and a thread that can't tell your
+     * messages from the other party's reads as one undifferentiated wall.
+     */
+    public function isFromOwner(): bool
+    {
+        if ($this->isOutgoing()) {
+            return true;
+        }
+
+        $ownAddress = $this->mailAccount?->email_address;
+
+        return $ownAddress !== null
+            && strcasecmp((string) $this->from_address, $ownAddress) === 0;
+    }
+
+    /**
      * Compact recipient label for a list row: the first recipient's name (or
      * email), plus "+N" when there are more.
      */
