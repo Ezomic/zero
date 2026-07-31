@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Mail;
 
+use App\Actions\Mail\QueueMirrorAction;
 use App\Jobs\ApplyEmailFlagJob;
+use App\Jobs\DrainMirrorActionsJob;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\Email;
 use App\Models\MailAccount;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -30,6 +33,30 @@ class QueueRoutingTest extends TestCase
         ApplyEmailFlagJob::dispatch($email, 'mark_read');
 
         Queue::assertPushedOn('flags', ApplyEmailFlagJob::class);
+    }
+
+    public function test_mirror_drains_go_to_the_flags_queue(): void
+    {
+        Queue::fake();
+
+        DrainMirrorActionsJob::dispatch($this->account());
+
+        Queue::assertPushedOn('flags', DrainMirrorActionsJob::class);
+    }
+
+    public function test_a_burst_of_actions_collapses_into_one_drain(): void
+    {
+        Queue::fake();
+
+        $account = $this->account();
+        $email = Email::factory()->for($account, 'mailAccount')->create(['uid' => '9']);
+        $action = app(QueueMirrorAction::class);
+
+        $action->handle($email, 'mark_read');
+        $action->handle($email, 'delete');
+
+        $this->assertSame(2, PendingMirrorAction::count());
+        Queue::assertPushed(DrainMirrorActionsJob::class, 1);
     }
 
     public function test_syncs_stay_off_the_flags_queue(): void

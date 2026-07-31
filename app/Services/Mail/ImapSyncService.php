@@ -9,8 +9,10 @@ use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -373,6 +375,259 @@ class ImapSyncService
                 ob_end_flush();
             }
         }
+    }
+
+    /**
+     * Applies every outstanding action for an account in as few commands as
+     * possible: one connection for the account, one folder select per folder,
+     * and one UID-set command per (folder, action) group instead of a fresh
+     * IMAP session per message (ZERO-78).
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     */
+    public function applyPendingActions(MailAccount $account, Collection $actions): void
+    {
+        $capturingImapTraffic = $this->beginImapTrafficCapture($account);
+
+        try {
+            $client = $this->buildClient($account);
+            $client->connect();
+
+            foreach ($actions->groupBy('remote_folder_path') as $remotePath => $folderActions) {
+                $this->applyFolderActions($account, $client, (string) $remotePath, $folderActions);
+            }
+        } finally {
+            if ($capturingImapTraffic) {
+                ob_end_flush();
+            }
+        }
+    }
+
+    /**
+     * Flags are applied before deletes and moves so a "read it, then bin it"
+     * sequence still lands in that order once the two have been grouped apart.
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     */
+    protected function applyFolderActions(MailAccount $account, Client $client, string $remotePath, Collection $actions): void
+    {
+        try {
+            $client->getConnection()->selectFolder($remotePath);
+        } catch (\Throwable $e) {
+            $actions->each(fn (PendingMirrorAction $action) => $action->recordFailure($e->getMessage()));
+
+            return;
+        }
+
+        $byAction = $actions->groupBy('action');
+
+        foreach (['mark_read' => '+', 'mark_unread' => '-'] as $name => $mode) {
+            $group = $byAction->get($name);
+
+            if ($group instanceof Collection && $group->isNotEmpty()) {
+                $this->storeFlagForGroup($client, $group, '\Seen', $mode);
+            }
+        }
+
+        $deletes = $byAction->get('delete');
+
+        if ($deletes instanceof Collection && $deletes->isNotEmpty()) {
+            $this->deleteGroup($account, $client, $deletes);
+        }
+
+        foreach ($actions->filter(fn (PendingMirrorAction $action) => $action->isMove()) as $action) {
+            $this->applyPendingMove($account, $client, $remotePath, $action);
+        }
+    }
+
+    /**
+     * One UID STORE per contiguous run. A bulk triage produces mostly
+     * consecutive UIDs, so thousands of individual commands collapse into a
+     * handful — and each Gmail round-trip was costing ~1.8s.
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     */
+    protected function storeFlagForGroup(Client $client, Collection $actions, string $flag, string $mode): void
+    {
+        $connection = $client->getConnection();
+
+        foreach ($this->uidRuns($actions) as [$from, $to, $runActions]) {
+            $succeeded = false;
+
+            try {
+                $succeeded = $connection->store([$flag], $from, $from === $to ? null : $to, $mode)->boolean();
+            } catch (\Throwable $e) {
+                $this->retryRunIndividually($runActions, fn (int $uid) => $connection->store([$flag], $uid, null, $mode)->boolean(), $e->getMessage());
+
+                continue;
+            }
+
+            if ($succeeded) {
+                PendingMirrorAction::whereIn('id', $runActions->pluck('id')->all())->delete();
+
+                continue;
+            }
+
+            // A range that comes back NO tells us nothing about which UID in it
+            // was the problem, so fall back to one command per message and keep
+            // the rest of the batch moving.
+            $this->retryRunIndividually($runActions, fn (int $uid) => $connection->store([$flag], $uid, null, $mode)->boolean(), 'IMAP store failed for range');
+        }
+    }
+
+    /**
+     * Deletes go out as a single UID MOVE — that command takes an arbitrary
+     * set, so contiguity doesn't matter — followed by one expunge for the
+     * whole folder rather than one per message.
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     */
+    protected function deleteGroup(MailAccount $account, Client $client, Collection $actions): void
+    {
+        $trashPath = $this->trashPathFor($account, $client);
+        $connection = $client->getConnection();
+        $uids = $this->uidsFor($actions);
+
+        if ($trashPath === null) {
+            foreach ($this->uidRuns($actions) as [$from, $to, $runActions]) {
+                try {
+                    if ($connection->store(['\Deleted'], $from, $from === $to ? null : $to, '+')->boolean()) {
+                        PendingMirrorAction::whereIn('id', $runActions->pluck('id')->all())->delete();
+
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    $runActions->each(fn (PendingMirrorAction $action) => $action->recordFailure($e->getMessage()));
+
+                    continue;
+                }
+
+                $runActions->each(fn (PendingMirrorAction $action) => $action->recordFailure('IMAP delete failed for range'));
+            }
+
+            $connection->expunge();
+
+            return;
+        }
+
+        try {
+            if ($connection->moveManyMessages(array_map(strval(...), array_keys($uids)), $trashPath)->boolean()) {
+                $connection->expunge();
+                PendingMirrorAction::whereIn('id', $actions->pluck('id')->all())->delete();
+
+                return;
+            }
+        } catch (\Throwable $e) {
+            $this->retryRunIndividually($actions, fn (int $uid) => $connection->moveMessage($trashPath, $uid)->boolean(), $e->getMessage());
+            $connection->expunge();
+
+            return;
+        }
+
+        $this->retryRunIndividually($actions, fn (int $uid) => $connection->moveMessage($trashPath, $uid)->boolean(), 'IMAP move to trash failed for set');
+        $connection->expunge();
+    }
+
+    /**
+     * Moves still go one at a time: only the high-level API reports back the
+     * UID the message was given in its destination, and without that every
+     * later action would address the wrong message. They do at least share the
+     * connection and folder select with the rest of the batch.
+     */
+    protected function applyPendingMove(MailAccount $account, Client $client, string $remotePath, PendingMirrorAction $action): void
+    {
+        $email = $action->email;
+
+        if (! $email) {
+            $action->delete();
+
+            return;
+        }
+
+        try {
+            $folder = $client->getFolder($remotePath);
+
+            if (! $folder) {
+                $action->recordFailure("Unknown source folder: {$remotePath}");
+
+                return;
+            }
+
+            $this->applyMove($email, $account, $folder->messages()->getMessageByUid((int) $action->uid), $action->moveTarget());
+            $action->delete();
+        } catch (\Throwable $e) {
+            $action->recordFailure($e->getMessage());
+        }
+    }
+
+    /**
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     * @param  callable(int): bool  $apply
+     */
+    protected function retryRunIndividually(Collection $actions, callable $apply, string $rangeError): void
+    {
+        foreach ($this->uidsFor($actions) as $uid => $uidActions) {
+            try {
+                if ($apply($uid)) {
+                    PendingMirrorAction::whereIn('id', $uidActions->pluck('id')->all())->delete();
+
+                    continue;
+                }
+
+                $uidActions->each(fn (PendingMirrorAction $action) => $action->recordFailure($rangeError));
+            } catch (\Throwable $e) {
+                $uidActions->each(fn (PendingMirrorAction $action) => $action->recordFailure($e->getMessage()));
+            }
+        }
+    }
+
+    /**
+     * Collapses the group's UIDs into ascending contiguous runs, each carrying
+     * the actions it covers.
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     * @return array<int, array{0: int, 1: int, 2: Collection<int, PendingMirrorAction>}>
+     */
+    protected function uidRuns(Collection $actions): array
+    {
+        $byUid = $this->uidsFor($actions);
+        $runs = [];
+
+        foreach ($byUid as $uid => $uidActions) {
+            $last = array_key_last($runs);
+
+            if ($last !== null && $runs[$last][1] === $uid - 1) {
+                $runs[$last][1] = $uid;
+                $runs[$last][2] = $runs[$last][2]->merge($uidActions);
+
+                continue;
+            }
+
+            $runs[] = [$uid, $uid, $uidActions];
+        }
+
+        return $runs;
+    }
+
+    /**
+     * Actions keyed by UID, ascending. Duplicates are real — the same message
+     * can be marked read twice before either reaches the server — so each key
+     * holds every action for that UID.
+     *
+     * @param  Collection<int, PendingMirrorAction>  $actions
+     * @return array<int, Collection<int, PendingMirrorAction>>
+     */
+    protected function uidsFor(Collection $actions): array
+    {
+        $byUid = [];
+
+        foreach ($actions as $action) {
+            $byUid[(int) $action->uid][] = $action;
+        }
+
+        ksort($byUid);
+
+        return array_map(fn (array $group) => new Collection($group), $byUid);
     }
 
     protected function applyMove(Email $email, MailAccount $account, Message $message, string $targetLocalName): void

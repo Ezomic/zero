@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\Inbox;
 
-use App\Jobs\ApplyEmailFlagJob;
+use App\Jobs\DrainMirrorActionsJob;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -39,6 +40,12 @@ class InboxMutationsTest extends TestCase
         ]);
     }
 
+    private function assertMirrorActions(string $action, int $count): void
+    {
+        $this->assertSame($count, PendingMirrorAction::where('action', $action)->count());
+        Queue::assertPushed(DrainMirrorActionsJob::class);
+    }
+
     public function test_archive_marks_every_message_in_the_thread_as_archived(): void
     {
         [$user, $account] = $this->userWithAccount();
@@ -67,7 +74,7 @@ class InboxMutationsTest extends TestCase
         }
     }
 
-    public function test_mark_unread_flags_the_thread_and_queues_a_flag_job_per_message(): void
+    public function test_mark_unread_flags_the_thread_and_queues_a_mirror_action_per_message(): void
     {
         Queue::fake();
         [$user, $account] = $this->userWithAccount();
@@ -80,10 +87,10 @@ class InboxMutationsTest extends TestCase
         foreach ($messages as $message) {
             $this->assertFalse($message->refresh()->is_read);
         }
-        Queue::assertPushed(ApplyEmailFlagJob::class, 2);
+        $this->assertMirrorActions('mark_unread', 2);
     }
 
-    public function test_destroy_soft_deletes_the_thread_and_queues_delete_jobs(): void
+    public function test_destroy_soft_deletes_the_thread_and_queues_delete_mirror_actions(): void
     {
         Queue::fake();
         [$user, $account] = $this->userWithAccount();
@@ -96,10 +103,10 @@ class InboxMutationsTest extends TestCase
         foreach ($messages as $message) {
             $this->assertTrue($message->refresh()->is_deleted);
         }
-        Queue::assertPushed(ApplyEmailFlagJob::class, 2);
+        $this->assertMirrorActions('delete', 2);
     }
 
-    public function test_move_relabels_the_thread_nulls_the_uid_and_queues_move_jobs(): void
+    public function test_move_relabels_the_thread_nulls_the_uid_and_queues_move_mirror_actions(): void
     {
         Queue::fake();
         [$user, $account] = $this->userWithAccount();
@@ -119,7 +126,7 @@ class InboxMutationsTest extends TestCase
             $this->assertSame('Receipts', $message->folder);
             $this->assertNull($message->uid);
         }
-        Queue::assertPushed(ApplyEmailFlagJob::class, 2);
+        $this->assertMirrorActions('move:Receipts', 2);
     }
 
     public function test_move_to_an_unknown_folder_is_rejected(): void
@@ -150,7 +157,7 @@ class InboxMutationsTest extends TestCase
         }
     }
 
-    public function test_bulk_delete_soft_deletes_and_queues_jobs(): void
+    public function test_bulk_delete_soft_deletes_and_queues_mirror_actions(): void
     {
         Queue::fake();
         [$user, $account] = $this->userWithAccount();
@@ -166,7 +173,7 @@ class InboxMutationsTest extends TestCase
         foreach ($messages as $message) {
             $this->assertTrue($message->refresh()->is_deleted);
         }
-        Queue::assertPushed(ApplyEmailFlagJob::class, 2);
+        $this->assertMirrorActions('delete', 2);
     }
 
     public function test_bulk_rejects_an_unknown_action(): void
