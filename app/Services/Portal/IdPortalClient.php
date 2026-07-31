@@ -13,7 +13,7 @@ use Throwable;
 /**
  * Fetches the apps a user may open from Thijssensoftware ID, for the in-app
  * portal / app switcher. Talks to ID's client-credentials endpoint and fails
- * soft: any error yields an empty list so the switcher just shows nothing
+ * soft: any error yields an empty result so the switcher just shows nothing
  * rather than breaking the page.
  */
 class IdPortalClient
@@ -21,15 +21,15 @@ class IdPortalClient
     private const TOKEN_CACHE_KEY = 'portal-client-token';
 
     /**
-     * @return list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string, current: bool}>
+     * @return array{apps: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string, current: bool}>, categories: list<array{category: string, apps: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string, current: bool}>}>}
      */
     public function appsFor(User $user): array
     {
         if (! $this->configured()) {
-            return [];
+            return ['apps' => [], 'categories' => []];
         }
 
-        $key = 'portal-apps:'.sha1($user->email);
+        $key = 'portal-apps:v2:'.sha1($user->email);
 
         $cached = Cache::get($key);
 
@@ -37,25 +37,43 @@ class IdPortalClient
             $cached = $this->fetch($user);
 
             // A transient failure returns null: don't cache it, so the next
-            // request retries rather than serving an empty list for the TTL.
+            // request retries rather than serving an empty result for the TTL.
             if ($cached === null) {
-                return [];
+                return ['apps' => [], 'categories' => []];
             }
 
             Cache::put($key, $cached, Config::integer('services.thijssensoftware.portal_cache_ttl', 300));
         }
 
-        /** @var list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}> $cached */
+        /** @var array{applications: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>, categories: list<array{category: string, apps: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>}>} $cached */
         $currentSlug = Config::string('services.thijssensoftware.slug');
 
+        return [
+            'apps' => $this->withCurrent($cached['applications'], $currentSlug),
+            'categories' => array_map(
+                fn (array $group): array => [
+                    'category' => $group['category'],
+                    'apps' => $this->withCurrent($group['apps'], $currentSlug),
+                ],
+                $cached['categories'],
+            ),
+        ];
+    }
+
+    /**
+     * @param  list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>  $apps
+     * @return list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string, current: bool}>
+     */
+    private function withCurrent(array $apps, string $currentSlug): array
+    {
         return array_map(
             fn (array $app): array => [...$app, 'current' => $app['slug'] === $currentSlug],
-            $cached,
+            $apps,
         );
     }
 
     /**
-     * @return list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>|null
+     * @return array{applications: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>, categories: list<array{category: string, apps: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>}>}|null
      */
     private function fetch(User $user): ?array
     {
@@ -75,10 +93,13 @@ class IdPortalClient
                 return null;
             }
 
-            /** @var list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}> $apps */
-            $apps = $response->json('applications', []);
+            /** @var list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}> $applications */
+            $applications = $response->json('applications', []);
 
-            return $apps;
+            /** @var list<array{category: string, apps: list<array{slug: string, name: string, initials: string, accent: string|null, launch_url: string}>}> $categories */
+            $categories = $response->json('categories', []);
+
+            return ['applications' => $applications, 'categories' => $categories];
         } catch (Throwable) {
             return null;
         }
