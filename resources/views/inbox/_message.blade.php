@@ -1,49 +1,78 @@
 @php
-    $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $message->from_name ?: $message->from_address), 0, 2)) ?: '??';
+    use Illuminate\Support\Str;
+
+    $sender = $message->from_name ?: $message->from_address;
+    $initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $sender), 0, 2)) ?: '??';
+    $outgoing = $message->isFromOwner();
+
+    // Older messages come in collapsed; the caller marks the newest one open.
+    $expanded = $expanded ?? true;
+
+    $snippet = Str::limit(
+        trim(preg_replace('/\s+/', ' ', $message->body_text ?: strip_tags((string) $message->body_html))),
+        120,
+    );
 @endphp
-<div class="msg">
-    <div class="msg-head">
-        <div class="avatar" style="background:{{ $message->mailAccount->color }}; width:30px; height:30px; font-size:11px;">{{ $initials }}</div>
-        <div>
-            <span class="who">{{ $message->from_name ?: $message->from_address }}</span>
-            <span class="addr">&lt;{{ $message->from_address }}&gt;</span>
+<div class="msg{{ $outgoing ? ' outgoing' : '' }}" x-data="{ open: {{ $expanded ? 'true' : 'false' }} }" :class="{ 'msg-collapsed': ! open }">
+    <div
+        class="msg-head"
+        role="button"
+        tabindex="0"
+        :aria-expanded="open"
+        x-on:click="open = ! open"
+        x-on:keydown.enter="open = ! open"
+        x-on:keydown.space.prevent="open = ! open"
+    >
+        <div class="avatar" style="background:{{ \App\Support\AvatarColor::forAddress($message->from_address) }}; width:30px; height:30px; font-size:11px;">{{ $initials }}</div>
+        <div class="msg-identity">
+            <span class="who">{{ $sender }}</span>
+            <span class="addr" x-show="open" x-cloak>&lt;{{ $message->from_address }}&gt;</span>
+            @if ($snippet !== '')
+                <span class="msg-snippet" x-show="! open" x-cloak>{{ $snippet }}</span>
+            @endif
         </div>
+        @if ($outgoing)
+            <span class="msg-tag">You</span>
+        @endif
         <div class="when">{{ $message->sent_at?->format('M j, Y g:i A') }}</div>
     </div>
-    <div style="padding:0 16px 10px; font-size:11.5px; color:var(--text-faint); display:flex; align-items:center; gap:6px; margin-top:-8px;">
-        <span class="acct-dot" style="background:{{ $message->mailAccount->color }}"></span>
-        via {{ $message->mailAccount->email_address }} &middot; {{ \App\Models\MailFolder::displayName($message->folder) }}
-    </div>
 
-    @if ($message->body_html)
-        <div class="msg-body" style="padding-top:0; border-top:none;">
-            <iframe
-                srcdoc="{{ $message->body_html }}"
-                sandbox="allow-same-origin"
-                referrerpolicy="no-referrer"
-                style="min-height:120px;"
-                onload="this.style.height = (this.contentDocument.documentElement.scrollHeight + 16) + 'px'"
-            ></iframe>
+    <div x-show="open" x-cloak>
+        <div style="padding:0 16px 10px; font-size:11.5px; color:var(--text-faint); display:flex; align-items:center; gap:6px; margin-top:-8px;">
+            <span class="acct-dot" style="background:{{ $message->mailAccount->color }}"></span>
+            via {{ $message->mailAccount->email_address }} &middot; {{ \App\Models\MailFolder::displayName($message->folder) }}
         </div>
-    @elseif ($message->body_text)
-        <div class="msg-body" style="padding-top:0; border-top:none; white-space:pre-wrap;">{{ $message->body_text }}</div>
-    @endif
 
-    @if ($message->attachments->isNotEmpty())
-        <div class="attach-row">
-            @foreach ($message->attachments as $attachment)
-                <div class="attach-chip"><svg class="ic-sm"><use href="#i-clip"/></svg>{{ $attachment->filename }} &middot; {{ number_format(($attachment->size_bytes ?? 0) / 1024, 1) }} KB</div>
-            @endforeach
-        </div>
-    @endif
-
-    <div style="display:flex; gap:6px; padding:12px 16px; border-top:1px solid var(--border-soft);">
-        <a href="{{ route('compose.reply', $message) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-reply"/></svg>Reply</a>
-        <a href="{{ route('compose.replyAll', $message) }}" class="btn sm ghost">Reply All</a>
-        <a href="{{ route('compose.forward', $message) }}" class="btn sm ghost">Forward</a>
-        @if (config('services.calendar.token'))
-            <button type="button" class="btn sm ghost" x-on:click="$dispatch('open-modal', 'cal-{{ $message->id }}')"><svg class="ic-sm"><use href="#i-calendar"/></svg>Create event</button>
+        @if ($message->body_html)
+            <div class="msg-body" style="padding-top:0; border-top:none;">
+                <iframe
+                    srcdoc="{{ $message->body_html }}"
+                    sandbox="allow-same-origin"
+                    referrerpolicy="no-referrer"
+                    style="min-height:120px;"
+                    onload="this.style.height = (this.contentDocument.documentElement.scrollHeight + 16) + 'px'"
+                ></iframe>
+            </div>
+        @elseif ($message->body_text)
+            <div class="msg-body" style="padding-top:0; border-top:none; white-space:pre-wrap;">{{ $message->body_text }}</div>
         @endif
+
+        @if ($message->attachments->isNotEmpty())
+            <div class="attach-row">
+                @foreach ($message->attachments as $attachment)
+                    <div class="attach-chip"><svg class="ic-sm"><use href="#i-clip"/></svg>{{ $attachment->filename }} &middot; {{ number_format(($attachment->size_bytes ?? 0) / 1024, 1) }} KB</div>
+                @endforeach
+            </div>
+        @endif
+
+        <div style="display:flex; gap:6px; padding:12px 16px; border-top:1px solid var(--border-soft);">
+            <a href="{{ route('compose.reply', $message) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-reply"/></svg>Reply</a>
+            <a href="{{ route('compose.replyAll', $message) }}" class="btn sm ghost">Reply All</a>
+            <a href="{{ route('compose.forward', $message) }}" class="btn sm ghost">Forward</a>
+            @if (config('services.calendar.token'))
+                <button type="button" class="btn sm ghost" x-on:click="$dispatch('open-modal', 'cal-{{ $message->id }}')"><svg class="ic-sm"><use href="#i-calendar"/></svg>Create event</button>
+            @endif
+        </div>
     </div>
 
     @if (config('services.calendar.token'))
