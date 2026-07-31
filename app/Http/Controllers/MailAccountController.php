@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Mail\SummariseMirrorBacklogs;
 use App\Concerns\InteractsWithCurrentUser;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
@@ -13,11 +14,12 @@ class MailAccountController extends Controller
 {
     use InteractsWithCurrentUser;
 
-    public function index(): View
+    public function index(SummariseMirrorBacklogs $summariseMirrorBacklogs): View
     {
         $accounts = $this->currentUser()->mailAccounts()->latest()->get();
+        $backlogs = $summariseMirrorBacklogs->handle($accounts->modelKeys());
 
-        return view('accounts.index', compact('accounts'));
+        return view('accounts.index', compact('accounts', 'backlogs'));
     }
 
     public function create(Request $request): View
