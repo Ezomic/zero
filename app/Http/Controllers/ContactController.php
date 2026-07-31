@@ -15,7 +15,7 @@ class ContactController extends Controller
      */
     public function search(Request $request): JsonResponse
     {
-        $q = trim((string) $request->get('q', ''));
+        $q = trim($request->string('q')->toString());
 
         if ($q === '') {
             return response()->json([]);

@@ -11,6 +11,7 @@ use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\Folder;
 
 /**
  * Sends a message from a given MailAccount.
@@ -139,6 +140,10 @@ class MailSenderService
             // Find the Sent folder — providers name it differently.
             $sentFolder = null;
             foreach ($client->getFolders(false) as $folder) {
+                if (! $folder instanceof Folder) {
+                    continue;
+                }
+
                 if (str_contains(strtolower($folder->name), 'sent')) {
                     $sentFolder = $folder;
                     break;

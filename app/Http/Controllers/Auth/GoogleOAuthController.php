@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MailAccount;
 use Illuminate\Http\RedirectResponse;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider;
 
 class GoogleOAuthController extends Controller
 {
@@ -15,7 +16,10 @@ class GoogleOAuthController extends Controller
      */
     public function redirect(): RedirectResponse
     {
-        return Socialite::driver('google')
+        /** @var AbstractProvider $provider */
+        $provider = Socialite::driver('google');
+
+        return $provider
             ->scopes([
                 'https://mail.google.com/', // full IMAP/SMTP access
                 'openid',
@@ -57,7 +61,7 @@ class GoogleOAuthController extends Controller
                 'smtp_username' => $googleUser->getEmail(),
                 'oauth_access_token' => $googleUser->token,
                 'oauth_refresh_token' => $googleUser->refreshToken,
-                'oauth_expires_at' => now()->addSeconds($googleUser->expiresIn ?? 3600),
+                'oauth_expires_at' => now()->addSeconds(is_numeric($googleUser->expiresIn ?? null) ? (int) $googleUser->expiresIn : 3600),
                 'is_active' => true,
             ]
         );

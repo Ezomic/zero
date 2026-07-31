@@ -149,7 +149,7 @@ class InboxController extends Controller
         }
 
         if ($q) {
-            $base->whereIn('id', $this->searchEmailIds($q, $accountIds->all()));
+            $base->whereIn('id', $this->searchEmailIds($q, $accountIds->map(fn (mixed $id): int => is_numeric($id) ? (int) $id : 0)->values()->all()));
         }
 
         // Collapse to the latest message per conversation thread.
@@ -272,9 +272,17 @@ class InboxController extends Controller
     {
         $this->authorizeOwnership($email);
 
-        $data = $request->validate([
+        $validated = $request->validate([
             'folder' => ['required', 'string'],
         ]);
+
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
+
+        $folder = $request->string('folder')->toString();
 
         $targetExists = MailFolder::where('mail_account_id', $email->mail_account_id)
             ->where('local_name', $data['folder'])
@@ -291,11 +299,11 @@ class InboxController extends Controller
             // the real move reports back the uid the message
             // actually got in its destination.
             $sourceUid = $message->uid;
-            $message->update(['folder' => $data['folder'], 'uid' => null]);
-            $this->queueMirror->handle($message, 'move:'.$data['folder'], $sourceUid);
+            $message->update(['folder' => $folder, 'uid' => null]);
+            $this->queueMirror->handle($message, 'move:'.$folder, $sourceUid);
         }
 
-        return redirect()->route('inbox.index')->with('status', 'Moved to '.$data['folder'].'.');
+        return redirect()->route('inbox.index')->with('status', 'Moved to '.$folder.'.');
     }
 
     /**
@@ -305,11 +313,17 @@ class InboxController extends Controller
      */
     public function bulk(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'action' => ['required', 'in:archive,unarchive,delete,read,unread'],
             'ids' => ['required', 'array'],
             'ids.*' => ['integer'],
         ]);
+
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
 
         $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
@@ -452,11 +466,11 @@ class InboxController extends Controller
                 $ai !== false && $bi !== false => $ai <=> $bi,
                 $ai !== false => -1,
                 $bi !== false => 1,
-                default => strcasecmp($a, $b),
+                default => strcasecmp(is_string($a) ? $a : '', is_string($b) ? $b : ''),
             };
         });
 
-        return $names;
+        return array_map(fn (mixed $n): string => is_string($n) ? $n : '', $names);
     }
 
     /**
@@ -474,6 +488,8 @@ class InboxController extends Controller
                         ->select('rowid')
                         ->whereRaw('emails_fts MATCH ?', [$match])
                         ->pluck('rowid')
+                        ->map(fn (mixed $id): int => is_numeric($id) ? (int) $id : 0)
+                        ->values()
                         ->all();
                 } catch (\Throwable) {
                     // Fall through to LIKE search below.
@@ -481,7 +497,8 @@ class InboxController extends Controller
             }
         }
 
-        return Email::whereIn('mail_account_id', $accountIds)
+        /** @var array<int, int> $ids */
+        $ids = Email::whereIn('mail_account_id', $accountIds)
             ->where(function ($query) use ($q) {
                 $query->where('subject', 'like', "%{$q}%")
                     ->orWhere('from_address', 'like', "%{$q}%")
@@ -489,6 +506,8 @@ class InboxController extends Controller
             })
             ->pluck('id')
             ->all();
+
+        return $ids;
     }
 
     protected function toFtsQuery(string $q): string

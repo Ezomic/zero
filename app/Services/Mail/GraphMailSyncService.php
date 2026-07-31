@@ -8,6 +8,7 @@ use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Support\Payload;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -112,16 +113,18 @@ class GraphMailSyncService
         }
 
         $data = $response->json();
-        $body = $data['body'] ?? [];
-        $isHtml = ($body['contentType'] ?? 'text') === 'html';
+        $body = Payload::arr($data, 'body');
+        $isHtml = Payload::str($body, 'contentType') === 'html';
+        $content = Payload::nullableStr($body, 'content');
+        $hasAttachments = Payload::bool($data, 'hasAttachments');
 
         $email->update([
-            'body_html' => $isHtml ? ($body['content'] ?? null) : null,
-            'body_text' => $isHtml ? null : ($body['content'] ?? null),
-            'has_attachments' => $data['hasAttachments'] ?? false,
+            'body_html' => $isHtml ? $content : null,
+            'body_text' => $isHtml ? null : $content,
+            'has_attachments' => $hasAttachments,
         ]);
 
-        if (($data['hasAttachments'] ?? false) && $email->attachments()->count() === 0) {
+        if ($hasAttachments && $email->attachments()->count() === 0) {
             $this->storeAttachments($account, $email, $accessToken);
         }
     }
@@ -174,7 +177,7 @@ class GraphMailSyncService
         $moved = $response->json();
 
         $email->update([
-            'uid' => $moved['id'],
+            'uid' => Payload::str($moved, 'id'),
             'remote_folder_path' => $targetFolderId,
         ]);
     }
@@ -210,14 +213,14 @@ class GraphMailSyncService
             throw new RuntimeException('Graph folder listing failed: '.$response->body());
         }
 
-        foreach ($response->json('value') ?? [] as $folder) {
-            $id = $folder['id'];
+        foreach (Payload::arr($response->json(), 'value') as $folder) {
+            $id = Payload::str($folder, 'id');
 
-            if (isset($result[$id]) || in_array($id, $excludedIds, true)) {
+            if ($id === '' || isset($result[$id]) || in_array($id, $excludedIds, true)) {
                 continue;
             }
 
-            $result[$id] = $folder['displayName'];
+            $result[$id] = Payload::str($folder, 'displayName');
         }
 
         return $result;
@@ -228,7 +231,13 @@ class GraphMailSyncService
     {
         $response = Http::withToken($accessToken)->get(self::BASE_URL."/me/mailFolders/{$wellKnownName}");
 
-        return $response->successful() ? $response->json() : null;
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $folder = $response->json();
+
+        return ['id' => Payload::str($folder, 'id'), 'displayName' => Payload::str($folder, 'displayName')];
     }
 
     protected function syncFolderPage(MailAccount $account, string $accessToken, string $graphFolderId, string $localName, MailFolder $folderRecord): void
@@ -260,15 +269,21 @@ class GraphMailSyncService
 
         $data = $response->json();
 
-        foreach ($data['value'] ?? [] as $message) {
-            if (isset($message['@removed'])) {
+        foreach (Payload::arr($data, 'value') as $message) {
+            if (! is_array($message) || isset($message['@removed'])) {
                 continue;
             }
 
-            $this->storeMessage($account, $localName, $graphFolderId, $message, broadcastNew: $wasCaughtUp);
+            $keyed = [];
+
+            foreach ($message as $key => $value) {
+                $keyed[(string) $key] = $value;
+            }
+
+            $this->storeMessage($account, $localName, $graphFolderId, $keyed, broadcastNew: $wasCaughtUp);
         }
 
-        $nextLink = $data['@odata.nextLink'] ?? $data['@odata.deltaLink'] ?? null;
+        $nextLink = Payload::nullableStr($data, '@odata.nextLink') ?? Payload::nullableStr($data, '@odata.deltaLink');
 
         if ($nextLink) {
             $folderRecord->update(['delta_link' => $nextLink]);
@@ -280,7 +295,7 @@ class GraphMailSyncService
      */
     protected function storeMessage(MailAccount $account, string $folderName, string $graphFolderId, array $message, bool $broadcastNew): void
     {
-        $uid = $message['id'];
+        $uid = Payload::str($message, 'id');
 
         $existing = Email::where('mail_account_id', $account->id)
             ->where('folder', $folderName)
@@ -288,7 +303,7 @@ class GraphMailSyncService
             ->first();
 
         if ($existing) {
-            $isRead = $message['isRead'] ?? false;
+            $isRead = Payload::bool($message, 'isRead');
 
             if ($existing->is_read !== $isRead) {
                 $existing->update(['is_read' => $isRead]);
@@ -297,7 +312,7 @@ class GraphMailSyncService
             return;
         }
 
-        $messageId = $message['internetMessageId'] ?? null;
+        $messageId = Payload::nullableStr($message, 'internetMessageId');
 
         $ulid = $messageId
             ? Email::where('mail_account_id', $account->id)
@@ -305,16 +320,17 @@ class GraphMailSyncService
                 ->value('ulid')
             : null;
 
-        $threadId = $message['conversationId'] ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
+        $threadId = Payload::nullableStr($message, 'conversationId') ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
 
-        $fromAddress = $message['from']['emailAddress']['address'] ?? null;
-        $fromName = $message['from']['emailAddress']['name'] ?? null;
-        $toAddresses = $this->graphAddressesToArray($message['toRecipients'] ?? []);
-        $ccAddresses = $this->graphAddressesToArray($message['ccRecipients'] ?? []);
+        $fromAddress = Payload::str($message, 'from', 'emailAddress', 'address');
+        $fromName = Payload::nullableStr($message, 'from', 'emailAddress', 'name');
+        $toAddresses = $this->graphAddressesToArray(Payload::arr($message, 'toRecipients'));
+        $ccAddresses = $this->graphAddressesToArray(Payload::arr($message, 'ccRecipients'));
 
-        $subject = $message['subject'] ?: '(no subject)';
-        $sentAt = isset($message['receivedDateTime']) ? Carbon::parse($message['receivedDateTime']) : null;
-        $isRead = $message['isRead'] ?? false;
+        $subject = Payload::nullableStr($message, 'subject') ?? '(no subject)';
+        $receivedAt = Payload::nullableStr($message, 'receivedDateTime');
+        $sentAt = $receivedAt !== null ? Carbon::parse($receivedAt) : null;
+        $isRead = Payload::bool($message, 'isRead');
 
         $email = Email::create([
             'mail_account_id' => $account->id,
@@ -341,7 +357,7 @@ class GraphMailSyncService
                 userId: $account->user_id,
                 emailId: $email->id,
                 folder: $folderName,
-                fromAddress: $fromAddress ?? '',
+                fromAddress: $fromAddress,
                 fromName: $fromName,
                 subject: $subject,
                 sentAt: ($sentAt ?? now())->toISOString() ?? '',
@@ -355,14 +371,18 @@ class GraphMailSyncService
      * @param  array<int, array{emailAddress: array{address?: string, name?: string}}>  $recipients
      * @return array<int, string>
      */
+    /**
+     * @param  array<mixed>  $recipients
+     * @return array<int, string>
+     */
     protected function graphAddressesToArray(array $recipients): array
     {
         return collect($recipients)
-            ->map(function ($r) {
-                $address = $r['emailAddress']['address'] ?? null;
-                $name = $r['emailAddress']['name'] ?? null;
+            ->map(function (mixed $r): ?string {
+                $address = Payload::nullableStr($r, 'emailAddress', 'address');
+                $name = Payload::nullableStr($r, 'emailAddress', 'name');
 
-                return $address ? trim(($name ? $name.' ' : '')."<{$address}>") : null;
+                return $address !== null ? trim(($name !== null ? $name.' ' : '')."<{$address}>") : null;
             })
             ->filter()
             ->values()
@@ -402,19 +422,20 @@ class GraphMailSyncService
             return;
         }
 
-        foreach ($response->json('value') ?? [] as $attachment) {
-            if (($attachment['@odata.type'] ?? null) !== '#microsoft.graph.fileAttachment') {
+        foreach (Payload::arr($response->json(), 'value') as $attachment) {
+            if (Payload::str($attachment, '@odata.type') !== '#microsoft.graph.fileAttachment') {
                 continue;
             }
 
-            $path = "email-attachments/{$account->id}/{$email->id}/".$attachment['name'];
-            Storage::disk('local')->put($path, base64_decode($attachment['contentBytes']));
+            $name = Payload::str($attachment, 'name');
+            $path = "email-attachments/{$account->id}/{$email->id}/".$name;
+            Storage::disk('local')->put($path, base64_decode(Payload::str($attachment, 'contentBytes')));
 
             EmailAttachment::create([
                 'email_id' => $email->id,
-                'filename' => $attachment['name'],
-                'mime_type' => $attachment['contentType'] ?? 'application/octet-stream',
-                'size_bytes' => $attachment['size'] ?? 0,
+                'filename' => $name,
+                'mime_type' => Payload::nullableStr($attachment, 'contentType') ?? 'application/octet-stream',
+                'size_bytes' => Payload::int($attachment, 'size'),
                 'storage_path' => $path,
             ]);
         }

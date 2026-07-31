@@ -15,7 +15,7 @@ class CalendarEventController extends Controller
     {
         abort_unless($email->mailAccount?->user_id === auth()->id(), 403);
 
-        $data = $request->validate([
+        $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['required', 'date', 'after:starts_at'],
@@ -23,16 +23,23 @@ class CalendarEventController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        $timezone = $data['timezone'] ?? config('app.timezone');
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
+
+        $configuredTimezone = config('app.timezone');
+        $timezone = $request->string('timezone')->toString() ?: (is_string($configuredTimezone) ? $configuredTimezone : 'UTC');
 
         try {
             $result = $calendar->createEvent(
                 email: $email,
-                title: $data['title'],
-                startsAt: CarbonImmutable::parse($data['starts_at'], $timezone),
-                endsAt: CarbonImmutable::parse($data['ends_at'], $timezone),
+                title: $request->string('title')->toString(),
+                startsAt: CarbonImmutable::parse($request->string('starts_at')->toString(), $timezone),
+                endsAt: CarbonImmutable::parse($request->string('ends_at')->toString(), $timezone),
                 timezone: $timezone,
-                description: $data['description'] ?? null,
+                description: $request->string('description')->toString() ?: null,
             );
         } catch (CalendarUnavailableException) {
             return back()->with('error', 'Calendar is unreachable — event not created.');

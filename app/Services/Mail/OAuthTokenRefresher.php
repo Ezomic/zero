@@ -3,6 +3,7 @@
 namespace App\Services\Mail;
 
 use App\Models\MailAccount;
+use App\Support\Payload;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -42,12 +43,18 @@ class OAuthTokenRefresher
 
         $data = $response->json();
 
+        $accessToken = Payload::nullableStr($data, 'access_token');
+
+        if ($accessToken === null) {
+            throw new RuntimeException('Google token refresh returned no access token.');
+        }
+
         $account->update([
-            'oauth_access_token' => $data['access_token'],
-            'oauth_expires_at' => now()->addSeconds($data['expires_in'] ?? 3600),
+            'oauth_access_token' => $accessToken,
+            'oauth_expires_at' => now()->addSeconds(Payload::int($data, 'expires_in') ?: 3600),
         ]);
 
-        return $data['access_token'];
+        return $accessToken;
     }
 
     protected function refreshMicrosoft(MailAccount $account): string
@@ -67,14 +74,19 @@ class OAuthTokenRefresher
 
         $data = $response->json();
 
+        $accessToken = Payload::nullableStr($data, 'access_token');
+
+        if ($accessToken === null) {
+            throw new RuntimeException('Microsoft token refresh returned no access token.');
+        }
+
         $account->update([
-            'oauth_access_token' => $data['access_token'],
-            // Microsoft rotates refresh tokens on most requests.
-            'oauth_refresh_token' => $data['refresh_token'] ?? $account->oauth_refresh_token,
-            'oauth_expires_at' => now()->addSeconds($data['expires_in'] ?? 3600),
+            'oauth_access_token' => $accessToken,
+            'oauth_refresh_token' => Payload::nullableStr($data, 'refresh_token') ?? $account->oauth_refresh_token,
+            'oauth_expires_at' => now()->addSeconds(Payload::int($data, 'expires_in') ?: 3600),
         ]);
 
-        return $data['access_token'];
+        return $accessToken;
     }
 
     /**

@@ -35,13 +35,17 @@ class SummariseMirrorBacklogs
             ->toBase()
             ->get();
 
-        $summaries = $rows->mapWithKeys(fn (object $row) => [
-            (int) $row->mail_account_id => new MirrorBacklog(
-                pending: (int) $row->pending,
-                oldestQueuedAt: $row->oldest_queued_at ? Carbon::parse($row->oldest_queued_at) : null,
-                abandoned: (int) $row->abandoned,
-            ),
-        ]);
+        $summaries = $rows->mapWithKeys(function (object $row): array {
+            $oldest = $row->oldest_queued_at;
+
+            return [
+                (is_numeric($row->mail_account_id) ? (int) $row->mail_account_id : 0) => new MirrorBacklog(
+                    pending: is_numeric($row->pending) ? (int) $row->pending : 0,
+                    oldestQueuedAt: is_string($oldest) ? Carbon::parse($oldest) : null,
+                    abandoned: is_numeric($row->abandoned) ? (int) $row->abandoned : 0,
+                ),
+            ];
+        });
 
         // Every account gets an entry so the view never has to null-check.
         return $ids->mapWithKeys(fn (int $id) => [$id => $summaries->get($id) ?? new MirrorBacklog]);
