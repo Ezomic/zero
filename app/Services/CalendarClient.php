@@ -33,10 +33,12 @@ class CalendarClient
         string $timezone,
         ?string $description = null,
     ): array {
-        $base = rtrim((string) config('services.calendar.url'), '/');
+        $configuredUrl = config('services.calendar.url');
+        $base = rtrim(is_string($configuredUrl) ? $configuredUrl : '', '/');
 
         try {
-            $response = Http::withToken((string) config('services.calendar.token'))
+            $configuredToken = config('services.calendar.token');
+            $response = Http::withToken(is_string($configuredToken) ? $configuredToken : '')
                 ->acceptJson()
                 ->connectTimeout(2)
                 ->timeout(5)
@@ -62,6 +64,13 @@ class CalendarClient
             throw new CalendarUnavailableException('Calendar returned '.$response->status().'.');
         }
 
-        return $response->json();
+        $payload = $response->json();
+        $keyed = [];
+
+        foreach (is_array($payload) ? $payload : [] as $key => $value) {
+            $keyed[(string) $key] = $value;
+        }
+
+        return $keyed;
     }
 }

@@ -56,7 +56,7 @@ class ComposeController extends Controller
 
     public function store(Request $request, MailSenderService $sender): RedirectResponse
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'mail_account_id' => ['required', 'exists:mail_accounts,id'],
             'to' => ['required', 'string'], // comma-separated
             'cc' => ['nullable', 'string'],
@@ -68,20 +68,26 @@ class ComposeController extends Controller
             'attachments.*' => ['nullable', 'file', 'max:10240'],
         ]);
 
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
+
         /** @var MailAccount $account */
         $account = MailAccount::findOrFail($data['mail_account_id']);
         abort_unless($account->user_id === auth()->id(), 403);
 
-        $toAddresses = $this->splitAddresses($data['to']);
-        $ccAddresses = $this->splitAddresses($data['cc'] ?? '');
+        $toAddresses = $this->splitAddresses($request->string('to')->toString());
+        $ccAddresses = $this->splitAddresses($request->string('cc')->toString());
 
         $sender->send($account, [
             'to' => $toAddresses,
             'cc' => $ccAddresses,
-            'subject' => $data['subject'],
-            'html' => nl2br(e($data['body'])),
-            'in_reply_to' => $data['in_reply_to'] ?? null,
-            'references' => $data['references'] ?? null,
+            'subject' => $request->string('subject')->toString(),
+            'html' => nl2br(e($request->string('body')->toString())),
+            'in_reply_to' => $request->string('in_reply_to')->toString() ?: null,
+            'references' => $request->string('references')->toString() ?: null,
             'attachments' => array_values(array_filter($request->file('attachments', []))),
         ]);
 
@@ -113,7 +119,7 @@ class ComposeController extends Controller
             $prefill['subject'] = preg_match('/^fwd:/i', $subject) ? $subject : "Fwd: {$subject}";
             $prefill['body'] = "\n\n---------- Forwarded message ----------\n"
                 .'From: '.($email->from_name ?: $email->from_address)." <{$email->from_address}>\n"
-                .'Date: '.optional($email->sent_at)->format('M j, Y g:i A')."\n"
+                .'Date: '.($email->sent_at?->format('M j, Y g:i A') ?? '')."\n"
                 ."Subject: {$subject}\n\n"
                 .$originalText;
 
@@ -127,15 +133,15 @@ class ComposeController extends Controller
 
         $quotedHeader = sprintf(
             'On %s, %s wrote:',
-            optional($email->sent_at)->format('M j, Y \a\t g:i A'),
+            $email->sent_at?->format('M j, Y \a\t g:i A') ?? '',
             $email->from_name ?: $email->from_address
         );
-        $quoted = collect(explode("\n", $originalText))->map(fn ($line) => "> {$line}")->implode("\n");
+        $quoted = collect(explode("\n", $originalText))->map(fn (string $line): string => "> {$line}")->implode("\n");
         $prefill['body'] = "\n\n{$quotedHeader}\n{$quoted}";
 
         if ($mode === 'reply-all') {
             $others = collect([...($email->to_addresses ?? []), ...($email->cc_addresses ?? [])])
-                ->map(fn ($formatted) => $this->extractAddress($formatted))
+                ->map(fn (mixed $formatted): ?string => $this->extractAddress(is_string($formatted) ? $formatted : ''))
                 ->filter(fn ($addr) => $addr
                     && strcasecmp($addr, $account->email_address) !== 0
                     && strcasecmp($addr, $email->from_address ?? '') !== 0)

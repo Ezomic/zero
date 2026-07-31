@@ -31,9 +31,9 @@ class SecurityConfirmationController extends Controller
 
     public function verify(Request $request, VerifyLoginCode $verifyLoginCode): RedirectResponse
     {
-        $data = $request->validate(['code' => ['required', 'string']]);
+        $request->validate(['code' => ['required', 'string']]);
 
-        if ($verifyLoginCode->handle($this->currentUser(), $data['code'])) {
+        if ($verifyLoginCode->handle($this->currentUser(), $request->string('code')->toString())) {
             $request->session()->passwordConfirmed();
 
             return redirect()->intended(route('security.show', absolute: false));

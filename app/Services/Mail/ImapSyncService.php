@@ -16,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Webklex\PHPIMAP\Attachment;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Connection\Protocols\Response;
@@ -300,6 +301,10 @@ class ImapSyncService
 
             if ($message->hasAttachments() && $email->attachments()->count() === 0) {
                 foreach ($message->getAttachments() as $attachment) {
+                    if (! $attachment instanceof Attachment) {
+                        continue;
+                    }
+
                     $path = "email-attachments/{$account->id}/{$email->id}/".$attachment->getName();
                     Storage::disk('local')->put($path, $attachment->getContent());
 
@@ -643,7 +648,7 @@ class ImapSyncService
         // IMAP UIDs are per-folder, so the moved message gets a new UID in
         // its destination — update our record or later actions (mark
         // read/delete/etc.) would target the wrong message.
-        $moved = $message->move($targetPath, expunge: true);
+        $moved = $message->move(is_string($targetPath) ? $targetPath : '', expunge: true);
 
         if ($moved) {
             $email->update([
@@ -749,7 +754,9 @@ class ImapSyncService
         }
 
         try {
-            return (int) ($folder->examine()['exists'] ?? 0);
+            $examined = $folder->examine();
+
+            return is_numeric($examined['exists'] ?? null) ? (int) $examined['exists'] : 0;
         } catch (\Throwable) {
             return null;
         }
@@ -827,8 +834,9 @@ class ImapSyncService
         // without discarding progress. Treating 0 as a change is what caused
         // every folder to reset on its first incremental run and re-fetch the
         // whole mailbox forever (see ZERO-50).
-        $serverUidValidity = (int) ($folder->examine()['uidvalidity'] ?? 0);
-        $storedUidValidity = (int) ($folderRecord->uid_validity ?? 0);
+        $examined = $folder->examine();
+        $serverUidValidity = is_numeric($examined['uidvalidity'] ?? null) ? (int) $examined['uidvalidity'] : 0;
+        $storedUidValidity = $folderRecord->uid_validity ?? 0;
 
         if ($storedUidValidity > 0 && $serverUidValidity > 0 && $serverUidValidity !== $storedUidValidity) {
             $folderRecord->update(['last_uid' => 0, 'uid_validity' => $serverUidValidity]);
@@ -858,8 +866,8 @@ class ImapSyncService
             // cache). syncFolder examined $folder above, so it is the selected
             // mailbox.
             $newUids = collect((array) $folder->getClient()->getConnection()->getUid()->validatedData())
-                ->map(fn ($uid) => (int) $uid)
-                ->filter(fn ($uid) => $uid > $folderRecord->last_uid)
+                ->map(fn (mixed $uid): int => is_numeric($uid) ? (int) $uid : 0)
+                ->filter(fn (int $uid): bool => $uid > $folderRecord->last_uid)
                 ->sort()
                 ->values();
 
@@ -867,6 +875,10 @@ class ImapSyncService
                 $messages = $folder->query()->setFetchBody(false)->curate_messages($batch->values());
 
                 foreach ($messages as $message) {
+                    if (! $message instanceof Message) {
+                        continue;
+                    }
+
                     $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: true));
                 }
 
@@ -898,8 +910,12 @@ class ImapSyncService
             // no criteria at all and the server rejects it with "Missing
             // search parameters" (see THI-292).
             $folder->messages()->all()->setFetchBody(false)->fetchOrderAsc()
-                ->chunked(function ($batch) use ($account, $folder, $folderName, $folderRecord, $deadline, &$highestUid) {
+                ->chunked(function (iterable $batch) use ($account, $folder, $folderName, $folderRecord, $deadline, &$highestUid) {
                     foreach ($batch as $message) {
+                        if (! $message instanceof Message) {
+                            continue;
+                        }
+
                         $highestUid = max($highestUid, $this->storeMessage($account, $folder, $folderName, $message, broadcastNew: false));
                     }
 
@@ -963,10 +979,14 @@ class ImapSyncService
         [$inReplyTo, $references] = $this->threadingHeaders($message);
         $threadId = $references[0] ?? $inReplyTo ?? $messageId ?: "standalone:{$account->id}:{$folderName}:{$uid}";
 
-        $fromAddress = $message->getFrom()[0]->mail ?? null;
-        $fromName = MimeHeader::decode($message->getFrom()[0]->personal ?? null);
-        $toAddresses = $this->addressesToArray($message->getTo()?->toArray());
-        $ccAddresses = $this->addressesToArray($message->getCc()?->toArray());
+        $sender = $message->getFrom()[0] ?? null;
+        $fromAddress = is_object($sender) && isset($sender->mail) && is_string($sender->mail) ? $sender->mail : null;
+        $senderName = is_object($sender) && isset($sender->personal) && is_string($sender->personal) ? $sender->personal : null;
+        $fromName = MimeHeader::decode($senderName);
+        $to = $message->getTo()?->toArray();
+        $cc = $message->getCc()?->toArray();
+        $toAddresses = $this->addressesToArray($to);
+        $ccAddresses = $this->addressesToArray($cc);
 
         $subject = MimeHeader::decode($message->getSubject()->toString()) ?: '(no subject)';
         $sentAt = $message->getDate()?->toDate();
@@ -1027,7 +1047,10 @@ class ImapSyncService
         }
 
         try {
-            $references = array_values(array_filter($message->getReferences()?->toArray() ?? []));
+            $rawReferences = $message->getReferences()?->toArray() ?? [];
+            $references = array_values(array_filter(
+                array_map(fn (mixed $r): string => is_string($r) ? $r : '', $rawReferences),
+            ));
         } catch (\Throwable) {
             $references = [];
         }
@@ -1064,6 +1087,10 @@ class ImapSyncService
      * @param  array<int, mixed>|null  $addresses
      * @return array<int, string>
      */
+    /**
+     * @param  array<mixed>|null  $addresses
+     * @return array<int, string>
+     */
     protected function addressesToArray(?array $addresses): array
     {
         if (! $addresses) {
@@ -1071,7 +1098,12 @@ class ImapSyncService
         }
 
         return collect($addresses)
-            ->map(fn ($a) => trim(($a->personal ? $a->personal.' ' : '')."<{$a->mail}>"))
+            ->map(function (mixed $a): string {
+                $personal = is_object($a) && isset($a->personal) && is_string($a->personal) ? $a->personal : '';
+                $mail = is_object($a) && isset($a->mail) && is_string($a->mail) ? $a->mail : '';
+
+                return trim(($personal !== '' ? $personal.' ' : ''))."<{$mail}>";
+            })
             ->values()
             ->all();
     }
@@ -1092,7 +1124,8 @@ class ImapSyncService
         // config we pass below only carries connection details — so a bare
         // `new ClientManager` would silently fall back to the package defaults
         // and ignore config/imap.php entirely (see ZERO-51).
-        $cm = new ClientManager(config('imap'));
+        $imapConfig = config('imap');
+        $cm = new ClientManager(is_array($imapConfig) ? $imapConfig : []);
 
         $config = [
             'host' => $account->imap_host,

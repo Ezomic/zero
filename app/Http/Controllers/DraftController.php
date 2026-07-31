@@ -27,7 +27,7 @@ class DraftController extends Controller
      */
     public function autosave(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'draft_id' => ['nullable', 'integer'],
             'mail_account_id' => ['nullable', 'exists:mail_accounts,id'],
             'to' => ['nullable', 'string'],
@@ -37,6 +37,12 @@ class DraftController extends Controller
             'in_reply_to' => ['nullable', 'string'],
             'references' => ['nullable', 'string'],
         ]);
+
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
 
         if (empty($data['to']) && empty($data['subject']) && empty($data['body'])) {
             return response()->json(['draft_id' => $data['draft_id'] ?? null]);

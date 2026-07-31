@@ -96,7 +96,7 @@ class TriageController extends Controller
             'account' => $account,
             'email' => $email,
             'remaining' => $remaining,
-            'skippedCount' => count($skippedThreadIds),
+            'skippedCount' => is_array($skippedThreadIds) ? count($skippedThreadIds) : 0,
             'folders' => $folders,
             'suggestedFolder' => $suggestedFolder,
         ]);
@@ -118,10 +118,12 @@ class TriageController extends Controller
     {
         $this->authorizeOwnership($email);
 
-        $data = $request->validate(['folder' => ['required', 'string']]);
+        $request->validate(['folder' => ['required', 'string']]);
+
+        $folder = $request->string('folder')->toString();
 
         $targetExists = MailFolder::where('mail_account_id', $email->mail_account_id)
-            ->where('local_name', $data['folder'])
+            ->where('local_name', $folder)
             ->exists();
 
         abort_unless($targetExists, 422, 'Unknown target folder.');
@@ -135,8 +137,8 @@ class TriageController extends Controller
             // the real move reports back the uid the message
             // actually got in its destination.
             $sourceUid = $message->uid;
-            $message->update(['folder' => $data['folder'], 'uid' => null, 'is_read' => true]);
-            $this->queueMirror->handle($message, 'move:'.$data['folder'], $sourceUid);
+            $message->update(['folder' => $folder, 'uid' => null, 'is_read' => true]);
+            $this->queueMirror->handle($message, 'move:'.$folder, $sourceUid);
         }
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);
@@ -148,8 +150,9 @@ class TriageController extends Controller
 
         $key = "triage_skipped.{$email->mail_account_id}";
         $skipped = $request->session()->get($key, []);
+        $skipped = is_array($skipped) ? $skipped : [];
         $skipped[] = $email->thread_id;
-        $request->session()->put($key, array_values(array_unique($skipped)));
+        $request->session()->put($key, array_values(array_unique(array_map(fn (mixed $id): string => is_scalar($id) ? (string) $id : '', $skipped))));
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);
     }

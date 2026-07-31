@@ -15,16 +15,17 @@ class LoginCodeController extends Controller
 {
     public function send(Request $request, SendLoginCode $sendLoginCode): RedirectResponse
     {
-        $data = $request->validate(['email' => ['required', 'email']]);
+        $request->validate(['email' => ['required', 'email']]);
 
-        $user = User::where('email', $data['email'])->first();
+        $email = $request->string('email')->toString();
+        $user = User::where('email', $email)->first();
 
         if ($user) {
             $sendLoginCode->handle($user);
         }
 
         return redirect()->route('login.code.challenge')
-            ->withInput($data)
+            ->withInput(['email' => $email])
             ->with('status', 'If that email belongs to an account, a login code is on its way.');
     }
 
@@ -35,14 +36,20 @@ class LoginCodeController extends Controller
 
     public function verify(Request $request, VerifyLoginCode $verifyLoginCode): RedirectResponse
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'email' => ['required', 'email'],
             'code' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $data['email'])->first();
+        $data = [];
 
-        if ($user && $verifyLoginCode->handle($user, $data['code'])) {
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
+
+        $user = User::where('email', $request->string('email')->toString())->first();
+
+        if ($user && $verifyLoginCode->handle($user, $request->string('code')->toString())) {
             Auth::login($user);
             $request->session()->regenerate();
 

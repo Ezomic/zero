@@ -42,7 +42,7 @@ class MailAccountController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'email_address' => ['required', 'email'],
             'display_name' => ['nullable', 'string', 'max:255'],
             'imap_host' => ['required', 'string'],
@@ -56,6 +56,12 @@ class MailAccountController extends Controller
             'smtp_username' => ['required', 'string'],
             'smtp_password' => ['required', 'string'],
         ]);
+
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
 
         /** @var MailAccount $account */
         $account = $this->currentUser()->mailAccounts()->create([
@@ -89,7 +95,7 @@ class MailAccountController extends Controller
         $this->authorizeOwnership($account);
 
         if ($account->usesOAuth()) {
-            $data = $request->validate([
+            $validated = $request->validate([
                 'display_name' => ['nullable', 'string', 'max:255'],
             ]);
             $data['is_active'] = $request->boolean('is_active');
@@ -99,7 +105,7 @@ class MailAccountController extends Controller
             return redirect()->route('accounts.index')->with('status', 'Account updated.');
         }
 
-        $data = $request->validate([
+        $validated = $request->validate([
             'email_address' => ['required', 'email'],
             'display_name' => ['nullable', 'string', 'max:255'],
             'imap_host' => ['required', 'string'],
@@ -113,6 +119,12 @@ class MailAccountController extends Controller
             'smtp_username' => ['required', 'string'],
             'smtp_password' => ['nullable', 'string'],
         ]);
+
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
 
         if (empty($data['imap_password'])) {
             unset($data['imap_password']);

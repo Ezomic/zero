@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MailAccount;
 use Illuminate\Http\RedirectResponse;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider;
 
 class MicrosoftOAuthController extends Controller
 {
@@ -15,7 +16,10 @@ class MicrosoftOAuthController extends Controller
      */
     public function redirect(): RedirectResponse
     {
-        return Socialite::driver('graph')
+        /** @var AbstractProvider $provider */
+        $provider = Socialite::driver('graph');
+
+        return $provider
             ->scopes([
                 'openid',
                 'email',
@@ -55,7 +59,7 @@ class MicrosoftOAuthController extends Controller
                 'smtp_username' => $msUser->getEmail(),
                 'oauth_access_token' => $msUser->token,
                 'oauth_refresh_token' => $msUser->refreshToken,
-                'oauth_expires_at' => now()->addSeconds($msUser->expiresIn ?? 3600),
+                'oauth_expires_at' => now()->addSeconds(is_numeric($msUser->expiresIn ?? null) ? (int) $msUser->expiresIn : 3600),
                 'is_active' => true,
             ]
         );

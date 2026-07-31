@@ -189,7 +189,7 @@ class Email extends Model
         $result = [];
 
         foreach (is_array($addresses) ? $addresses : [] as $raw) {
-            $raw = trim((string) $raw);
+            $raw = trim(is_scalar($raw) ? (string) $raw : '');
 
             if (preg_match('/^(.*)<(.+)>$/', $raw, $m) === 1) {
                 $name = trim($m[1]);
@@ -234,7 +234,7 @@ class Email extends Model
             ->orderByDesc('cnt')
             ->value('folder');
 
-        if ($bySender) {
+        if (is_string($bySender) && $bySender !== '') {
             return $bySender;
         }
 
@@ -244,7 +244,7 @@ class Email extends Model
             return null;
         }
 
-        return static::query()
+        $byDomain = static::query()
             ->where('mail_account_id', $this->mail_account_id)
             ->where('from_address', 'like', '%@'.$domain)
             ->where('is_deleted', false)
@@ -253,5 +253,7 @@ class Email extends Model
             ->groupBy('folder')
             ->orderByDesc('cnt')
             ->value('folder');
+
+        return is_string($byDomain) ? $byDomain : null;
     }
 }

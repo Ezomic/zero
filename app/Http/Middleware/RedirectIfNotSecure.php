@@ -22,11 +22,14 @@ class RedirectIfNotSecure
 {
     protected const EXEMPT_HOSTS = ['localhost', '127.0.0.1'];
 
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): Response
     {
         $exempt = in_array($request->getHost(), self::EXEMPT_HOSTS, true);
 
-        if (! $request->secure() && ! $exempt && str_starts_with(config('app.url'), 'https://')) {
+        if (! $request->secure() && ! $exempt && str_starts_with(is_string($appUrl = config('app.url')) ? $appUrl : '', 'https://')) {
             return redirect()->secure($request->getRequestUri());
         }
 
