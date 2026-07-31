@@ -1,10 +1,9 @@
 name: Deploy to production
 
+# Manual deploys only. Production is deployed by hand over SSH; this workflow
+# is kept as a workflow_dispatch escape hatch and never triggers automatically.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-
 concurrency:
   group: production
   cancel-in-progress: false
