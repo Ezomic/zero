@@ -38,7 +38,10 @@
                         <div class="acct-ring" style="background:{{ $account->color }}">{{ $initials }}</div>
                         <div style="min-width:0;">
                             <div class="addr">{{ $account->email_address }}</div>
-                            <div class="provider">{{ $account->provider }}{{ $account->is_active ? '' : ' &middot; inactive' }}</div>
+                            {{-- A literal '·', not &middot;: this expression is escaped (and has to
+                                 stay escaped, it interpolates model data), so an entity would
+                                 print verbatim. --}}
+                            <div class="provider">{{ $account->provider }}{{ $account->is_active ? '' : ' · inactive' }}</div>
                         </div>
                     </div>
 
