@@ -13,3 +13,9 @@ Artisan::command('inspire', function () {
 // (e.g. during the initial bulk fetch of a large mailbox on first connect).
 // See ImapSyncService for the full sync strategy description.
 Schedule::command('mail:sync')->everyFiveMinutes()->withoutOverlapping();
+
+// Safety net for mirror-backs. They are normally drained by the job queued
+// alongside the action; this picks up anything left behind by a drain that was
+// dropped as a duplicate or killed mid-run, so a pending action can never sit
+// indefinitely waiting for the next user click to nudge it.
+Schedule::command('mail:drain-mirrors')->everyFiveMinutes()->withoutOverlapping();

@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\Inbox;
 
-use App\Jobs\ApplyEmailFlagJob;
+use App\Jobs\DrainMirrorActionsJob;
 use App\Models\Email;
 use App\Models\MailAccount;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -31,7 +32,8 @@ class ReadingPaneTest extends TestCase
         $response->assertOk();
         $response->assertSee('Q3 invoice');
         $this->assertTrue($email->fresh()->is_read);
-        Queue::assertPushed(ApplyEmailFlagJob::class);
+        $this->assertSame(1, PendingMirrorAction::where('action', 'mark_read')->count());
+        Queue::assertPushed(DrainMirrorActionsJob::class);
     }
 
     public function test_panel_forbidden_for_another_users_email(): void

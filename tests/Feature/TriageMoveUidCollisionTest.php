@@ -2,10 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\ApplyEmailFlagJob;
+use App\Jobs\DrainMirrorActionsJob;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -56,15 +57,13 @@ class TriageMoveUidCollisionTest extends TestCase
         $this->assertSame('Bugsnag', $inboxEmail->folder);
         $this->assertNull($inboxEmail->uid);
 
-        Queue::assertPushed(
-            ApplyEmailFlagJob::class,
-            fn (ApplyEmailFlagJob $job) => (function () use ($job) {
-                $reflection = new \ReflectionClass($job);
-                $sourceUid = $reflection->getProperty('sourceUid');
-                $sourceUid->setAccessible(true);
+        // The queued action has to carry the uid the message had in INBOX,
+        // not the one it will get in Bugsnag, or the drain would address the
+        // unrelated message already filed there.
+        $queued = PendingMirrorAction::where('email_id', $inboxEmail->id)->sole();
+        $this->assertSame('move:Bugsnag', $queued->action);
+        $this->assertSame('29', $queued->uid);
 
-                return $sourceUid->getValue($job) === '29';
-            })()
-        );
+        Queue::assertPushed(DrainMirrorActionsJob::class);
     }
 }

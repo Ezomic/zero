@@ -103,6 +103,7 @@ Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
 | `MailFolder` | `remote_path`, `local_name`, `last_uid`, `uid_validity` | One row per folder per account. `last_uid` drives incremental sync — only messages with UIDs above this are fetched. `uid_validity` detects folder recreations (triggers full resync). |
 | `Contact` | `user_id`, `email`, `name` | Auto-populated from every From/To/CC seen during sync. Powers compose autocomplete. |
 | `Draft` | `mail_account_id`, `data` (JSON) | Autosaved from the compose view. |
+| `PendingMirrorAction` | `mail_account_id`, `email_id`, `action`, `remote_folder_path`, `uid`, `attempts`, `failed_at` | One local action still waiting to reach the mail server. Rows are deleted on confirmation, so anything left is outstanding — this is what the accounts page counts and what `DrainMirrorActionsJob` batches. |
 | `EmailAttachment` | `email_id`, `storage_path` | Written on first body fetch if the message has attachments. |
 
 ### Services
@@ -159,11 +160,23 @@ any API/IMAP operation on OAuth accounts.
   Non-auth failures (timeout, network) leave `is_active = true` so the account
   self-recovers.
 
-**`ApplyEmailFlagJob`**
-- `$timeout = 60`, `$tries = 3`.
-- Calls `ImapSyncService::applyAction()` to mirror a local flag change back
-  to the mail server. Dispatched optimistically — UI state is already updated
-  before this runs.
+**`DrainMirrorActionsJob`**
+- One job per account, on the `flags` queue, `ShouldBeUnique` +
+  `WithoutOverlapping` so a burst of triage clicks collapses into one drain.
+- Reads every `pending_mirror_actions` row for the account and hands IMAP ones
+  to `ImapSyncService::applyPendingActions()`, which applies them in one
+  session: one folder select per folder, one UID STORE per contiguous run, one
+  UID MOVE plus one expunge for all deletes. Outlook still applies one at a
+  time (Graph has no UID-set equivalent) but uses the same table.
+- Failures are recorded per row (`attempts`, `last_error`) and retried by a
+  later drain, so one bad UID never sinks the batch. After
+  `PendingMirrorAction::MAX_ATTEMPTS` the row is stamped `failed_at` and left
+  for inspection.
+
+**`ApplyEmailFlagJob`** — superseded, kept only so mirror-backs queued before
+ZERO-78 can still drain. Nothing dispatches it any more; new actions go through
+`QueueMirrorAction` into `pending_mirror_actions`. Safe to delete once no old
+payloads remain in the queue.
 
 ### Commands
 

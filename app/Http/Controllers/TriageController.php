@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Mail\QueueMirrorAction;
 use App\Concerns\InteractsWithCurrentUser;
-use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
@@ -24,6 +24,10 @@ use Illuminate\View\View;
 class TriageController extends Controller
 {
     use InteractsWithCurrentUser;
+
+    public function __construct(
+        protected QueueMirrorAction $queueMirror,
+    ) {}
 
     public function index(Request $request, ImapSyncService $imapSyncService, GraphMailSyncService $graphMailSyncService): View
     {
@@ -104,7 +108,7 @@ class TriageController extends Controller
 
         foreach ($this->threadEmails($email)->get() as $message) {
             $message->update(['is_deleted' => true]);
-            ApplyEmailFlagJob::dispatch($message, 'delete');
+            $this->queueMirror->handle($message, 'delete');
         }
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);
@@ -128,11 +132,11 @@ class TriageController extends Controller
             // colliding with an unrelated message already filed under the
             // destination folder. Null it locally (the job carries the old
             // value separately so it can still find the real message) until
-            // ApplyEmailFlagJob's real move reports back the uid the message
+            // the real move reports back the uid the message
             // actually got in its destination.
             $sourceUid = $message->uid;
             $message->update(['folder' => $data['folder'], 'uid' => null, 'is_read' => true]);
-            ApplyEmailFlagJob::dispatch($message, 'move:'.$data['folder'], $sourceUid);
+            $this->queueMirror->handle($message, 'move:'.$data['folder'], $sourceUid);
         }
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);

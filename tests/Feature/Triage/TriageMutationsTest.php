@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\Triage;
 
-use App\Jobs\ApplyEmailFlagJob;
+use App\Jobs\DrainMirrorActionsJob;
 use App\Models\Email;
 use App\Models\MailAccount;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -25,7 +26,7 @@ class TriageMutationsTest extends TestCase
         return [$user, $account];
     }
 
-    public function test_delete_soft_deletes_the_whole_thread_and_queues_jobs(): void
+    public function test_delete_soft_deletes_the_whole_thread_and_queues_mirror_actions(): void
     {
         Queue::fake();
         [$user, $account] = $this->userWithAccount();
@@ -42,7 +43,8 @@ class TriageMutationsTest extends TestCase
         foreach ($messages as $message) {
             $this->assertTrue($message->refresh()->is_deleted);
         }
-        Queue::assertPushed(ApplyEmailFlagJob::class, 2);
+        $this->assertSame(2, PendingMirrorAction::where('action', 'delete')->count());
+        Queue::assertPushed(DrainMirrorActionsJob::class);
     }
 
     public function test_skip_records_the_thread_in_the_session_and_does_not_touch_the_message(): void

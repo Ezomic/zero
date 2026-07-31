@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Mail\QueueMirrorAction;
 use App\Concerns\InteractsWithCurrentUser;
-use App\Jobs\ApplyEmailFlagJob;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
@@ -28,6 +28,10 @@ class InboxController extends Controller
 
     /** Canonical folders always sort first, ahead of custom folders. */
     protected const CANONICAL_ORDER = ['INBOX', 'SENT', 'DRAFTS', 'TRASH'];
+
+    public function __construct(
+        protected QueueMirrorAction $queueMirror,
+    ) {}
 
     /**
      * Unified inbox: emails from every account the user owns, newest first,
@@ -199,7 +203,7 @@ class InboxController extends Controller
 
             if (! $message->is_read) {
                 $message->update(['is_read' => true]);
-                ApplyEmailFlagJob::dispatch($message, 'mark_read');
+                $this->queueMirror->handle($message, 'mark_read');
             }
         }
 
@@ -240,7 +244,7 @@ class InboxController extends Controller
 
         foreach ($this->threadEmails($email)->get() as $message) {
             $message->update(['is_read' => false]);
-            ApplyEmailFlagJob::dispatch($message, 'mark_unread');
+            $this->queueMirror->handle($message, 'mark_unread');
         }
 
         return redirect()->route('inbox.index')->with('status', 'Marked as unread.');
@@ -252,7 +256,7 @@ class InboxController extends Controller
 
         foreach ($this->threadEmails($email)->get() as $message) {
             $message->update(['is_deleted' => true]);
-            ApplyEmailFlagJob::dispatch($message, 'delete');
+            $this->queueMirror->handle($message, 'delete');
         }
 
         return redirect()->route('inbox.index')->with('status', 'Conversation deleted.');
@@ -284,11 +288,11 @@ class InboxController extends Controller
             // colliding with an unrelated message already filed under the
             // destination folder. Null it locally (the job carries the old
             // value separately so it can still find the real message) until
-            // ApplyEmailFlagJob's real move reports back the uid the message
+            // the real move reports back the uid the message
             // actually got in its destination.
             $sourceUid = $message->uid;
             $message->update(['folder' => $data['folder'], 'uid' => null]);
-            ApplyEmailFlagJob::dispatch($message, 'move:'.$data['folder'], $sourceUid);
+            $this->queueMirror->handle($message, 'move:'.$data['folder'], $sourceUid);
         }
 
         return redirect()->route('inbox.index')->with('status', 'Moved to '.$data['folder'].'.');
@@ -328,15 +332,15 @@ class InboxController extends Controller
                     break;
                 case 'delete':
                     $message->update(['is_deleted' => true]);
-                    ApplyEmailFlagJob::dispatch($message, 'delete');
+                    $this->queueMirror->handle($message, 'delete');
                     break;
                 case 'read':
                     $message->update(['is_read' => true]);
-                    ApplyEmailFlagJob::dispatch($message, 'mark_read');
+                    $this->queueMirror->handle($message, 'mark_read');
                     break;
                 case 'unread':
                     $message->update(['is_read' => false]);
-                    ApplyEmailFlagJob::dispatch($message, 'mark_unread');
+                    $this->queueMirror->handle($message, 'mark_unread');
                     break;
             }
         }
