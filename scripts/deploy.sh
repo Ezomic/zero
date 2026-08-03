@@ -156,14 +156,12 @@ chmod g+s database
 ok "Permissions set"
 
 # ── 9. Restart services ───────────────────────────────────────────────────────
-step "Restarting PHP-FPM"
 # No `systemctl reload php8.4-fpm` here on purpose. All 21 sites on the
 # droplet share one php-fpm master and therefore one opcache, so a reload
 # to deploy this app would discard ~350MB of cached bytecode belonging to
 # every other app and force them all to recompile. opcache.validate_timestamps
 # is on, so the new code is picked up on the next request without it.
 # See INFRA-28. If that setting is ever turned off, this must come back.
-ok "PHP-FPM reloaded"
 
 step "Restarting zero supervisor programs"
 sudo supervisorctl restart zero-scheduler:* zero-reverb:* zero-idle-10:* > /dev/null
