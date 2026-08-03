@@ -14,8 +14,8 @@
 #   2. Pulls latest code from main
 #   3. Installs/updates Composer dependencies (no-dev)
 #   4. Installs npm dependencies and rebuilds frontend assets
-#   5. Runs migrations
-#   6. Clears and rebuilds caches
+#   5. Clears the stale config cache, then runs migrations
+#   6. Rebuilds caches
 #   7. Creates storage symlink if missing
 #   8. Sets correct permissions
 #   9. Restarts PHP-FPM and all zero supervisor programs
@@ -125,6 +125,15 @@ if [[ ! -L "public/storage" ]]; then
 fi
 
 # ── 6. Database migrations ────────────────────────────────────────────────────
+# The config cache on disk is still the PREVIOUS deploy's until step 7 rebuilds
+# it, so without this a migration cannot see config shipped in its own release.
+# ZERO-80's migration would have aborted with "Database connection
+# [sqlite_system] not configured" for exactly this reason: config/database.php
+# defined it, the cached copy did not.
+step "Clearing the stale config cache before migrating"
+$PHP artisan config:clear
+ok "Config cache cleared"
+
 step "Running migrations"
 $PHP artisan migrate --force
 ok "Migrations complete"
@@ -168,12 +177,16 @@ sudo supervisorctl restart zero-scheduler:* zero-reverb:* zero-idle-10:* > /dev/
 ok "Scheduler, Reverb, and IMAP IDLE restarted"
 
 # zero-queue has stopwaitsecs=3600 so an in-flight IMAP sync can finish
-# gracefully — don't block the deploy on that (a past deploy hung here for
-# the full SSH command timeout and got killed before reaching maintenance
-# mode being lifted). Let supervisor cycle it in the background instead.
-nohup sudo supervisorctl restart zero-queue:* > /tmp/zero-queue-restart.log 2>&1 &
+# gracefully, and zero-queue-flags has 120 — don't block the deploy on either
+# (a past deploy hung here for the full SSH command timeout and got killed
+# before reaching maintenance mode being lifted). Let supervisor cycle them in
+# the background instead.
+#
+# zero-queue-flags runs DrainMirrorActionsJob and was missing from this list
+# entirely, so it kept serving the previous release's code after every deploy.
+nohup sudo supervisorctl restart zero-queue:* zero-queue-flags:* > /tmp/zero-queue-restart.log 2>&1 &
 disown
-ok "Queue worker restart triggered in the background"
+ok "Queue and flag worker restarts triggered in the background"
 
 # ── 10. Back online ───────────────────────────────────────────────────────────
 step "Disabling maintenance mode"

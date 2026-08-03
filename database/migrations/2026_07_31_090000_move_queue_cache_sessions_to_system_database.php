@@ -81,6 +81,13 @@ return new class extends Migration
      * Copies in chunks so a large `jobs` table doesn't have to be held in
      * memory all at once, then refuses to drop the source unless every row
      * arrived.
+     *
+     * Re-runnable on purpose. A partial failure leaves rows already sitting in
+     * the destination, so a plain insert would collide on the primary key and
+     * an exact row-count check would fail forever, leaving a half-moved
+     * database recoverable only by hand. insertOrIgnore skips what already
+     * arrived, and the check asks whether every source row is now present
+     * rather than whether the destination matches exactly.
      */
     private function copyTable(string $table, ?string $from, ?string $to): void
     {
@@ -91,13 +98,13 @@ return new class extends Migration
 
         if ($expected > 0) {
             $source->table($table)->orderBy($this->orderColumn($table))->chunk(500, function ($rows) use ($destination, $table) {
-                $destination->table($table)->insert(array_map(fn ($row) => (array) $row, $rows->all()));
+                $destination->table($table)->insertOrIgnore(array_map(fn ($row) => (array) $row, $rows->all()));
             });
         }
 
         $copied = $destination->table($table)->count();
 
-        if ($copied !== $expected) {
+        if ($copied < $expected) {
             throw new RuntimeException("Copying {$table} moved {$copied} of {$expected} rows; aborting so the source is left intact.");
         }
     }
