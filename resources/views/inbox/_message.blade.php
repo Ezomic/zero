@@ -67,12 +67,29 @@
             </div>
         @endif
 
+        @php
+            $calendarEvents = $message->calendarEvents;
+        @endphp
+
+        @if ($calendarEvents->isNotEmpty())
+            <div class="attach-row">
+                @foreach ($calendarEvents as $event)
+                    @if ($event->url)
+                        <a class="attach-chip" href="{{ $event->url }}" target="_blank" rel="noopener"
+                           title="Open in the calendar"><svg class="ic-sm"><use href="#i-calendar"/></svg>{{ $event->title }} &middot; {{ $event->localStart()->format('j M, H:i') }}</a>
+                    @else
+                        <span class="attach-chip"><svg class="ic-sm"><use href="#i-calendar"/></svg>{{ $event->title }} &middot; {{ $event->localStart()->format('j M, H:i') }}</span>
+                    @endif
+                @endforeach
+            </div>
+        @endif
+
         <div style="display:flex; gap:6px; padding:12px 16px; border-top:1px solid var(--border-soft);">
             <a href="{{ route('compose.reply', $message) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-reply"/></svg>Reply</a>
             <a href="{{ route('compose.replyAll', $message) }}" class="btn sm ghost">Reply All</a>
             <a href="{{ route('compose.forward', $message) }}" class="btn sm ghost">Forward</a>
             @if (config('services.calendar.token'))
-                <button type="button" class="btn sm ghost" x-on:click="$dispatch('open-modal', 'cal-{{ $message->id }}')"><svg class="ic-sm"><use href="#i-calendar"/></svg>Create event</button>
+                <button type="button" class="btn sm ghost" x-on:click="$dispatch('open-modal', 'cal-{{ $message->id }}')"><svg class="ic-sm"><use href="#i-calendar"/></svg>{{ $calendarEvents->isEmpty() ? 'Create event' : 'Create another event' }}</button>
             @endif
         </div>
     </div>
@@ -88,6 +105,13 @@
                 @csrf
                 <input type="hidden" name="timezone" x-model="tz">
                 <h3 style="margin:0; font-weight:600;">Create calendar event</h3>
+                @if ($calendarEvents->isNotEmpty())
+                    <p style="margin:0; font-size:12.5px; color:var(--text-dim);">
+                        Already in the calendar from this message:
+                        {{ $calendarEvents->map(fn ($e) => $e->title.' ('.$e->localStart()->format('j M, H:i').')')->implode(', ') }}.
+                        Submitting will create another.
+                    </p>
+                @endif
                 <label style="display:flex; flex-direction:column; gap:4px; font-size:13px;">
                     Title
                     <input name="title" value="{{ $message->subject }}" required class="input">
