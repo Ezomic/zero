@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Mail\QueueMirrorAction;
+use App\Actions\Mail\ReadInvitations;
 use App\Concerns\InteractsWithCurrentUser;
 use App\Models\Email;
 use App\Models\MailAccount;
@@ -32,6 +33,7 @@ class InboxController extends Controller
 
     public function __construct(
         protected QueueMirrorAction $queueMirror,
+        protected ReadInvitations $readInvitations,
     ) {}
 
     /**
@@ -218,11 +220,17 @@ class InboxController extends Controller
             $suggestedFolder = null;
         }
 
+        $configuredTimezone = config('app.timezone');
+
         return [
             'messages' => $messages,
             'email' => $email,
             'availableFolders' => $availableFolders,
             'suggestedFolder' => $suggestedFolder,
+            'invitations' => $this->readInvitations->handle(
+                $messages,
+                is_string($configuredTimezone) ? $configuredTimezone : 'UTC',
+            ),
         ];
     }
 

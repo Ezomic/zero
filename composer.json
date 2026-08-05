@@ -12,6 +12,7 @@
         "laravel/reverb": "^1.10",
         "laravel/socialite": "^5.28",
         "laravel/tinker": "^3.0",
+        "sabre/vobject": "^5.0",
         "socialiteproviders/microsoft-graph": "^4.1",
         "thijssensoftware/id-client": "^0.1.0",
         "webklex/laravel-imap": "^6.2"

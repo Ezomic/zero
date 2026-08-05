@@ -80,6 +80,10 @@
     {{-- Oldest first, so the last one is the newest: that is the one worth
          reading on open, and the rest collapse to a summary line. --}}
     @foreach ($messages as $message)
-        @include('inbox._message', ['message' => $message, 'expanded' => $loop->last])
+        @include('inbox._message', [
+            'message' => $message,
+            'expanded' => $loop->last,
+            'invitation' => ($invitations ?? collect())->get($message->id),
+        ])
     @endforeach
 </div>
