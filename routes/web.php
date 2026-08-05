@@ -6,6 +6,7 @@ use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ComposeController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DraftController;
+use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\SecurityController;
@@ -49,6 +50,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/emails/bulk', [InboxController::class, 'bulk'])->name('inbox.bulk');
     Route::get('/api/unread-count', [InboxController::class, 'unreadCount'])->name('inbox.unreadCount');
     Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
+
+    Route::get('/attachments/{attachment}', [EmailAttachmentController::class, 'show'])->name('attachments.download');
 
     Route::post('/emails/{email}/calendar-event', [CalendarEventController::class, 'store'])->name('inbox.calendarEvent');
 

@@ -18,6 +18,7 @@ class EmailAttachment extends Model
         'storage_path',
     ];
 
+    /** @return BelongsTo<Email, $this> */
     public function email(): BelongsTo
     {
         return $this->belongsTo(Email::class);
