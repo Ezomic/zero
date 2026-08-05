@@ -60,7 +60,9 @@
         @if ($message->attachments->isNotEmpty())
             <div class="attach-row">
                 @foreach ($message->attachments as $attachment)
-                    <div class="attach-chip"><svg class="ic-sm"><use href="#i-clip"/></svg>{{ $attachment->filename }} &middot; {{ number_format(($attachment->size_bytes ?? 0) / 1024, 1) }} KB</div>
+                    <a class="attach-chip" href="{{ route('attachments.download', $attachment) }}"
+                       download="{{ $attachment->filename }}"
+                       title="Download {{ $attachment->filename }}"><svg class="ic-sm"><use href="#i-clip"/></svg>{{ $attachment->filename }} &middot; {{ number_format(($attachment->size_bytes ?? 0) / 1024, 1) }} KB</a>
                 @endforeach
             </div>
         @endif
