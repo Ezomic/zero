@@ -88,6 +88,12 @@ class Email extends Model
         return $this->hasMany(EmailAttachment::class);
     }
 
+    /** @return HasMany<CalendarEvent, $this> */
+    public function calendarEvents(): HasMany
+    {
+        return $this->hasMany(CalendarEvent::class)->oldest('starts_at');
+    }
+
     /**
      * All messages in the same conversation (same account + thread_id), oldest first.
      *
@@ -99,7 +105,7 @@ class Email extends Model
             ->where('mail_account_id', $this->mail_account_id)
             ->where('thread_id', $this->thread_id)
             ->where('is_deleted', false)
-            ->with('attachments', 'mailAccount')
+            ->with('attachments', 'mailAccount', 'calendarEvents')
             ->oldest('sent_at');
     }
 
