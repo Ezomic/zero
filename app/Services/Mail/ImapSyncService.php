@@ -989,7 +989,7 @@ class ImapSyncService
         $ccAddresses = $this->addressesToArray($cc);
 
         $subject = MimeHeader::decode($message->getSubject()->toString()) ?: '(no subject)';
-        $sentAt = $message->getDate()?->toDate();
+        $sentAt = $this->messageDate($message);
         $isRead = $message->getFlags()->has('Seen');
 
         $email = Email::create([
@@ -1022,7 +1022,10 @@ class ImapSyncService
                 fromAddress: $fromAddress ?? '',
                 fromName: $fromName,
                 subject: $subject,
-                sentAt: $sentAt->toISOString() ?? '',
+                // The toast only needs something to show, so a message that
+                // stored no sent_at falls back to its arrival time rather
+                // than taking down the account's whole sync run (ZERO-92).
+                sentAt: $email->sent_at?->toISOString() ?? now()->toISOString() ?? '',
             ));
 
             if (config('features.macos_notifications')) {
@@ -1033,6 +1036,24 @@ class ImapSyncService
         $this->recordContacts($account, $fromAddress, $fromName, $toAddresses, $ccAddresses);
 
         return $numericUid;
+    }
+
+    /**
+     * webklex types getDate() as always returning an Attribute, but
+     * Message::get() falls through to the header bag, which hands back null
+     * for a message carrying no Date header at all — and Attribute::toDate()
+     * throws on one it cannot parse. Neither is exceptional enough to fail an
+     * account's whole sync run, so both land as a null sent_at (ZERO-92).
+     */
+    protected function messageDate(Message $message): ?CarbonInterface
+    {
+        try {
+            $date = $message->getDate()?->toDate();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $date;
     }
 
     /**
