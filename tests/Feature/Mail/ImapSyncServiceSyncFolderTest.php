@@ -7,6 +7,7 @@ use App\Exceptions\SyncBudgetExceededException;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\PendingMirrorAction;
 use App\Models\User;
 use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
@@ -109,16 +110,24 @@ class ImapSyncServiceSyncFolderTest extends TestCase
      * because webklex quotes the range into an invalid `UID SEARCH UID "n:*"`
      * (ZERO-61). $messagesByUid maps uid => Message for the ones that come back.
      *
+     * $unseenUids is what `UID SEARCH UNSEEN` reports, which is how the
+     * reconciliation reads the server's flags for messages already stored.
+     *
      * @param  array<int>  $allUids
      * @param  array<int, Message>  $messagesByUid
+     * @param  array<int>  $unseenUids
      */
-    private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid): void
+    private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid, array $unseenUids = []): void
     {
         $response = Mockery::mock(Response::class);
         $response->shouldReceive('validatedData')->andReturn($allUids);
 
+        $unseenResponse = Mockery::mock(Response::class);
+        $unseenResponse->shouldReceive('validatedData')->andReturn($unseenUids);
+
         $connection = Mockery::mock(ProtocolInterface::class);
         $connection->shouldReceive('getUid')->andReturn($response);
+        $connection->shouldReceive('search')->with(['UNSEEN'])->andReturn($unseenResponse);
 
         $client = Mockery::mock(Client::class);
         $client->shouldReceive('getConnection')->andReturn($connection);
@@ -427,5 +436,219 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         $this->service->callSyncFolder($this->account, $folder2, $incrementalFolder, 'INBOX', 5000);
 
         Event::assertDispatched(NewEmailArrived::class);
+    }
+
+    // --- reconciliation of already-stored messages (ZERO-90) ----------------
+
+    private function incrementalFolderRecord(int $lastUid = 100): MailFolder
+    {
+        return MailFolder::create([
+            'mail_account_id' => $this->account->id,
+            'local_name' => 'INBOX',
+            'remote_path' => 'INBOX',
+            'last_uid' => $lastUid,
+            'uid_validity' => 42,
+        ]);
+    }
+
+    private function storedEmail(int $uid, bool $isRead, bool $isDeleted = false): Email
+    {
+        return Email::factory()->create([
+            'mail_account_id' => $this->account->id,
+            'folder' => 'INBOX',
+            'uid' => (string) $uid,
+            'is_read' => $isRead,
+            'is_deleted' => $isDeleted,
+        ]);
+    }
+
+    public function test_a_message_read_on_another_device_is_reconciled_to_read(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: false);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        // Still on the server, and no longer in the UNSEEN set.
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: []);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertTrue($email->fresh()->is_read);
+    }
+
+    public function test_a_message_marked_unread_on_another_device_is_reconciled_to_unread(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: [60]);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_read);
+    }
+
+    public function test_a_message_expunged_on_the_server_is_marked_deleted(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $gone = $this->storedEmail(uid: 60, isRead: true);
+        $kept = $this->storedEmail(uid: 61, isRead: true);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        // 60 is no longer in the folder; 61 still is.
+        $this->mockIncrementalFetch($folder, [61], []);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertTrue($gone->fresh()->is_deleted);
+        $this->assertFalse($kept->fresh()->is_deleted);
+    }
+
+    /**
+     * A UID fetch that comes back with nothing is indistinguishable from a
+     * genuinely emptied folder, and acting on the second would wipe the
+     * folder locally.
+     */
+    public function test_an_empty_server_uid_list_deletes_nothing(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [], []);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_deleted);
+    }
+
+    /**
+     * Until a drain has pushed our own "mark read" the server still reports
+     * the message unseen, and reconciling against that would undo it.
+     */
+    public function test_a_message_with_an_action_still_queued_is_left_alone(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+
+        PendingMirrorAction::create([
+            'mail_account_id' => $this->account->id,
+            'email_id' => $email->id,
+            'action' => 'mark_read',
+            'remote_folder_path' => 'INBOX',
+            'uid' => '60',
+        ]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: [60]);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertTrue($email->fresh()->is_read);
+    }
+
+    public function test_a_queued_delete_does_not_get_reconciled_away_early(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+
+        PendingMirrorAction::create([
+            'mail_account_id' => $this->account->id,
+            'email_id' => $email->id,
+            'action' => 'delete',
+            'remote_folder_path' => 'INBOX',
+            'uid' => '60',
+        ]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        // The drain has not run, so the message is gone from neither side yet.
+        $this->mockIncrementalFetch($folder, [61], []);
+        $this->storedEmail(uid: 61, isRead: true);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_deleted);
+    }
+
+    public function test_another_accounts_mail_is_never_reconciled(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $otherAccount = MailAccount::factory()->create(['user_id' => User::factory()]);
+        $theirs = Email::factory()->create([
+            'mail_account_id' => $otherAccount->id,
+            'folder' => 'INBOX',
+            'uid' => '60',
+            'is_read' => false,
+            'is_deleted' => false,
+        ]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [99], []);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($theirs->fresh()->is_deleted);
+        $this->assertFalse($theirs->fresh()->is_read);
+    }
+
+    public function test_a_failed_unseen_search_leaves_flags_alone_without_failing_the_folder(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: false);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+
+        $response = Mockery::mock(Response::class);
+        $response->shouldReceive('validatedData')->andReturn([60]);
+
+        $connection = Mockery::mock(ProtocolInterface::class);
+        $connection->shouldReceive('getUid')->andReturn($response);
+        $connection->shouldReceive('search')->andThrow(new \RuntimeException('SEARCH failed'));
+
+        $client = Mockery::mock(Client::class);
+        $client->shouldReceive('getConnection')->andReturn($connection);
+        $folder->shouldReceive('getClient')->andReturn($client);
+
+        $query = Mockery::mock(WhereQuery::class);
+        $folder->shouldReceive('query')->andReturn($query);
+        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
+        $query->shouldReceive('curate_messages')->andReturn(new MessageCollection([]));
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_read);
+        $this->assertFalse($email->fresh()->is_deleted);
+    }
+
+    public function test_a_first_time_full_sync_reconciles_nothing(): void
+    {
+        // last_uid = 0 takes the full-sync branch, where every message is
+        // being fetched anyway and there is nothing yet to reconcile against.
+        $folderRecord = $this->incrementalFolderRecord(lastUid: 0);
+        $email = $this->storedEmail(uid: 60, isRead: false);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+
+        $query = Mockery::mock(WhereQuery::class);
+        $folder->shouldReceive('messages')->andReturn($query);
+        $query->shouldReceive('all')->andReturnSelf();
+        $query->shouldReceive('setFetchBody')->with(false)->andReturnSelf();
+        $query->shouldReceive('fetchOrderAsc')->andReturnSelf();
+        $query->shouldReceive('chunked')->andReturnNull();
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_deleted);
+        $this->assertFalse($email->fresh()->is_read);
     }
 }

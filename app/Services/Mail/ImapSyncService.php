@@ -12,7 +12,9 @@ use App\Models\MailFolder;
 use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -775,8 +777,14 @@ class ImapSyncService
             // previous folder's cached list, since EXAMINE does not clear the
             // cache). syncFolder examined $folder above, so it is the selected
             // mailbox.
-            $newUids = collect((array) $folder->getClient()->getConnection()->getUid()->validatedData())
-                ->map(fn (mixed $uid): int => is_numeric($uid) ? (int) $uid : 0)
+            $serverUids = $this->numericUids($folder->getClient()->getConnection()->getUid()->validatedData());
+
+            // Done before fetching anything: the UID list is already in hand
+            // and this costs one more command, whereas the fetch below is the
+            // part that can run out of budget. Cheap and complete first.
+            $this->reconcileRemoteState($account, $folder, $folderName, $serverUids);
+
+            $newUids = collect($serverUids)
                 ->filter(fn (int $uid): bool => $uid > $folderRecord->last_uid)
                 ->sort()
                 ->values();
@@ -844,6 +852,143 @@ class ImapSyncService
 
         if ($highestUid > $folderRecord->last_uid) {
             $folderRecord->update(['last_uid' => $highestUid]);
+        }
+    }
+
+    /**
+     * Brings already-stored messages back in line with the server.
+     *
+     * Incremental sync only ever fetches UIDs above the cursor, so nothing it
+     * fetches says anything about the messages already stored: read something
+     * on your phone and this app kept showing it unread indefinitely, delete
+     * it elsewhere and it stayed in the list forever (ZERO-90). Outlook was
+     * never affected, Graph's delta reports changes and removals itself.
+     *
+     * Both halves are one IMAP command each regardless of folder size — the
+     * UID list is already fetched, and UNSEEN is a single SEARCH — so this
+     * cannot grow into the sync's time budget the way a per-message fetch
+     * would.
+     *
+     * @param  list<int>  $serverUids  every UID currently in the folder
+     */
+    protected function reconcileRemoteState(MailAccount $account, Folder $folder, string $folderName, array $serverUids): void
+    {
+        // An empty list is ambiguous: a genuinely emptied folder looks exactly
+        // like a UID fetch that came back with nothing, and acting on the
+        // second would wipe the folder locally. Being a run late costs far
+        // less than being wrong, so leave it for a run that sees something.
+        if ($serverUids === []) {
+            return;
+        }
+
+        $local = $this->reconcilableEmails($account, $folderName);
+
+        if ($local->isEmpty()) {
+            return;
+        }
+
+        $present = array_flip($serverUids);
+
+        $gone = $local->reject(fn (array $row): bool => isset($present[$row['uid']]));
+        $this->markDeleted($gone->pluck('id'));
+
+        $stillHere = $local->filter(fn (array $row): bool => isset($present[$row['uid']]));
+        $this->reconcileReadFlags($folder, $stillHere);
+    }
+
+    /**
+     * The folder's live rows, excluding any with an action of our own still
+     * waiting to reach the server: until a drain has pushed a "mark read", the
+     * server legitimately still reports it unseen, and reconciling against
+     * that would undo what the user just did.
+     *
+     * @return Collection<int, array{id: int, uid: int, is_read: bool}>
+     */
+    protected function reconcilableEmails(MailAccount $account, string $folderName): Collection
+    {
+        return Email::query()
+            ->where('mail_account_id', $account->id)
+            ->where('folder', $folderName)
+            ->where('is_deleted', false)
+            ->whereNotNull('uid')
+            ->whereNotExists(function (QueryBuilder $query) use ($account): void {
+                $query->select(DB::raw('1'))
+                    ->from('pending_mirror_actions')
+                    ->where('pending_mirror_actions.mail_account_id', $account->id)
+                    ->whereColumn('pending_mirror_actions.email_id', 'emails.id');
+            })
+            ->get(['id', 'uid', 'is_read'])
+            ->map(fn (Email $email): array => [
+                'id' => (int) $email->id,
+                'uid' => (int) $email->uid,
+                'is_read' => (bool) $email->is_read,
+            ]);
+    }
+
+    /**
+     * @param  Collection<int, array{id: int, uid: int, is_read: bool}>  $emails
+     */
+    protected function reconcileReadFlags(Folder $folder, Collection $emails): void
+    {
+        if ($emails->isEmpty()) {
+            return;
+        }
+
+        try {
+            $unseen = array_flip(
+                $this->numericUids($folder->getClient()->getConnection()->search(['UNSEEN'])->validatedData())
+            );
+        } catch (\Throwable $e) {
+            // Not worth failing the folder over: the messages themselves are
+            // synced, only their flags are stale for another run.
+            Log::warning("UNSEEN search failed for {$folder->full_name}: ".$e->getMessage());
+
+            return;
+        }
+
+        $shouldBeRead = $emails->filter(fn (array $row): bool => ! $row['is_read'] && ! isset($unseen[$row['uid']]));
+        $shouldBeUnread = $emails->filter(fn (array $row): bool => $row['is_read'] && isset($unseen[$row['uid']]));
+
+        $this->updateInChunks($shouldBeRead->pluck('id'), ['is_read' => true]);
+        $this->updateInChunks($shouldBeUnread->pluck('id'), ['is_read' => false]);
+    }
+
+    /**
+     * webklex hands back whatever the server said, so narrow it before it is
+     * used as a UID set.
+     *
+     * @return list<int>
+     */
+    protected function numericUids(mixed $raw): array
+    {
+        $uids = [];
+
+        foreach (is_array($raw) ? $raw : [] as $uid) {
+            if (is_numeric($uid) && (int) $uid > 0) {
+                $uids[] = (int) $uid;
+            }
+        }
+
+        return $uids;
+    }
+
+    /** @param Collection<int, mixed> $ids */
+    protected function markDeleted(Collection $ids): void
+    {
+        $this->updateInChunks($ids, ['is_deleted' => true]);
+    }
+
+    /**
+     * Chunked because the id list is bounded only by the size of the folder,
+     * and SQLite will not bind more than ~32k parameters in one statement.
+     *
+     * @param  Collection<int, mixed>  $ids
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function updateInChunks(Collection $ids, array $attributes): void
+    {
+        foreach ($ids->chunk(500) as $chunk) {
+            Email::whereIn('id', $chunk->all())->update($attributes);
         }
     }
 
