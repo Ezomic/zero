@@ -10,6 +10,7 @@ use App\Models\MailFolder;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -149,22 +150,25 @@ class InboxController extends Controller
         }
 
         if ($q) {
-            $base->whereIn('id', $this->searchEmailIds($q, $accountIds->map(fn (mixed $id): int => is_numeric($id) ? (int) $id : 0)->values()->all()));
+            $this->applySearch($base, $q);
         }
 
-        // Collapse to the latest message per conversation thread.
-        $threadEmailIds = (clone $base)->reorder()
+        // Collapse to the latest message per conversation thread. Kept as a
+        // subquery rather than a plucked list for the same reason as the
+        // search above: one bound parameter per thread is one too many on a
+        // folder holding more threads than SQLite will bind (ZERO-91).
+        $latestPerThread = (clone $base)->reorder()
             ->selectRaw('MAX(id) as id')
-            ->groupBy('thread_id')
-            ->pluck('id');
+            ->groupBy('thread_id');
 
         $emails = Email::query()
-            ->whereIn('id', $threadEmailIds)
+            ->whereIn('id', $latestPerThread)
             ->with('mailAccount')
             ->latest('sent_at')
             ->paginate(25)
             ->withQueryString();
 
+        // Bounded by the page size, so this one stays a plain list.
         $threadCounts = Email::query()
             ->whereIn('thread_id', $emails->pluck('thread_id'))
             ->where('is_deleted', false)
@@ -390,12 +394,13 @@ class InboxController extends Controller
             $base->where('mail_account_id', $selectedAccountId);
         }
 
-        $threadEmailIds = (clone $base)->reorder()
+        // ?since=0 means "everything", so this is unbounded too — same
+        // subquery treatment as listData().
+        $latestPerThread = (clone $base)->reorder()
             ->selectRaw('MAX(id) as id')
-            ->groupBy('thread_id')
-            ->pluck('id');
+            ->groupBy('thread_id');
 
-        $emails = Email::whereIn('id', $threadEmailIds)
+        $emails = Email::whereIn('id', $latestPerThread)
             ->with('mailAccount')
             ->latest('sent_at')
             ->get();
@@ -474,40 +479,58 @@ class InboxController extends Controller
     }
 
     /**
-     * @param  array<int, int>  $accountIds
-     * @return array<int, int>
+     * Narrows the list query to messages matching $q.
+     *
+     * Both paths constrain the query in place rather than resolving a list of
+     * ids to feed back in. Pulling every match out first meant one bound
+     * parameter per hit, and SQLite caps a statement at ~32k of them: a term
+     * common enough to appear in tens of thousands of messages produced a
+     * search that could only fail, and only on a mailbox large enough to
+     * matter (ZERO-91). The FTS subquery below binds exactly once, whatever
+     * it matches.
+     *
+     * @param  Builder<Email>  $base
      */
-    protected function searchEmailIds(string $q, array $accountIds): array
+    protected function applySearch(Builder $base, string $q): void
     {
-        if (DB::getDriverName() === 'sqlite') {
-            $match = $this->toFtsQuery($q);
+        $match = DB::getDriverName() === 'sqlite' ? $this->toFtsQuery($q) : '';
 
-            if ($match !== '') {
-                try {
-                    return DB::table('emails_fts')
-                        ->select('rowid')
-                        ->whereRaw('emails_fts MATCH ?', [$match])
-                        ->pluck('rowid')
-                        ->map(fn (mixed $id): int => is_numeric($id) ? (int) $id : 0)
-                        ->values()
-                        ->all();
-                } catch (\Throwable) {
-                    // Fall through to LIKE search below.
-                }
-            }
+        if ($match !== '' && $this->ftsIsUsable($match)) {
+            $base->whereIn('id', function (QueryBuilder $query) use ($match): void {
+                $query->select('rowid')
+                    ->from('emails_fts')
+                    ->whereRaw('emails_fts MATCH ?', [$match]);
+            });
+
+            return;
         }
 
-        /** @var array<int, int> $ids */
-        $ids = Email::whereIn('mail_account_id', $accountIds)
-            ->where(function ($query) use ($q) {
-                $query->where('subject', 'like', "%{$q}%")
-                    ->orWhere('from_address', 'like', "%{$q}%")
-                    ->orWhere('body_text', 'like', "%{$q}%");
-            })
-            ->pluck('id')
-            ->all();
+        $base->where(function (Builder $query) use ($q): void {
+            $query->where('subject', 'like', "%{$q}%")
+                ->orWhere('from_address', 'like', "%{$q}%")
+                ->orWhere('body_text', 'like', "%{$q}%");
+        });
+    }
 
-        return $ids;
+    /**
+     * A missing emails_fts table or a MATCH expression FTS5 rejects used to
+     * surface when the id list was resolved, which is what selected the LIKE
+     * fallback. As a subquery it would instead blow up the whole page, so ask
+     * the question up front. LIMIT 1 keeps it cheap regardless of hit count.
+     */
+    protected function ftsIsUsable(string $match): bool
+    {
+        try {
+            DB::table('emails_fts')
+                ->select('rowid')
+                ->whereRaw('emails_fts MATCH ?', [$match])
+                ->limit(1)
+                ->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     protected function toFtsQuery(string $q): string
