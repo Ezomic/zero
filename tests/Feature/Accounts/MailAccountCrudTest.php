@@ -86,6 +86,46 @@ class MailAccountCrudTest extends TestCase
         $this->assertSame('original-secret', $account->imap_password);
     }
 
+    public function test_update_persists_the_display_name_on_an_oauth_account(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'provider' => MailAccount::PROVIDER_GMAIL,
+            'display_name' => 'Old name',
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('accounts.update', $account), [
+                'display_name' => 'New name',
+                'is_active' => '1',
+            ])
+            ->assertRedirect(route('accounts.index'));
+
+        $account->refresh();
+        $this->assertSame('New name', $account->display_name);
+        $this->assertTrue($account->is_active);
+    }
+
+    public function test_update_can_deactivate_an_oauth_account_without_clearing_its_display_name(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'provider' => MailAccount::PROVIDER_OUTLOOK,
+            'display_name' => 'Work',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('accounts.update', $account), ['display_name' => 'Work'])
+            ->assertRedirect(route('accounts.index'));
+
+        $account->refresh();
+        $this->assertSame('Work', $account->display_name);
+        $this->assertFalse($account->is_active);
+    }
+
     public function test_update_is_forbidden_for_another_users_account(): void
     {
         $account = MailAccount::factory()->create();
