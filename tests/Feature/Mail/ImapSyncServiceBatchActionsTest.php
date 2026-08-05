@@ -7,6 +7,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\PendingMirrorAction;
 use App\Models\User;
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,7 +24,7 @@ class TestableImapSyncServiceForBatch extends ImapSyncService
 {
     public function __construct(private Client $client)
     {
-        parent::__construct(Mockery::mock(OAuthTokenRefresher::class));
+        parent::__construct(new ImapClientFactory(Mockery::mock(OAuthTokenRefresher::class)));
     }
 
     protected function buildClient(MailAccount $account): Client

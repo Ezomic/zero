@@ -5,9 +5,8 @@ namespace App\Console\Commands;
 use App\Exceptions\AccountWatchStoppedException;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
-use App\Services\Mail\OAuthTokenRefresher;
+use App\Services\Mail\ImapClientFactory;
 use Illuminate\Console\Command;
-use Webklex\PHPIMAP\ClientManager;
 
 class IdleMailboxCommand extends Command
 {
@@ -15,7 +14,7 @@ class IdleMailboxCommand extends Command
 
     protected $description = 'Hold an IMAP IDLE connection and dispatch a sync job when new mail arrives';
 
-    public function handle(OAuthTokenRefresher $tokenRefresher): int
+    public function handle(ImapClientFactory $clientFactory): int
     {
         if (! config('features.imap_idle')) {
             $this->warn('IMAP IDLE is disabled (FEATURE_IMAP_IDLE=false). Exiting.');
@@ -45,25 +44,7 @@ class IdleMailboxCommand extends Command
 
         $this->info("Starting IMAP IDLE for {$account->email_address}…");
 
-        $cm = new ClientManager;
-
-        $config = [
-            'host' => $account->imap_host,
-            'port' => $account->imap_port,
-            'encryption' => $account->imap_encryption,
-            'validate_cert' => true,
-            'username' => $account->imap_username,
-            'timeout' => 30,
-        ];
-
-        if ($account->usesOAuth()) {
-            $config['password'] = $tokenRefresher->freshAccessToken($account);
-            $config['authentication'] = 'oauth';
-        } else {
-            $config['password'] = $account->imap_password;
-        }
-
-        $client = $cm->make($config);
+        $client = $clientFactory->make($account);
         $client->connect();
 
         $inbox = $client->getFolder('INBOX');

@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Webklex\PHPIMAP\Attachment;
 use Webklex\PHPIMAP\Client;
-use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 
@@ -138,7 +137,7 @@ class ImapSyncService
     protected const SYNC_TIME_BUDGET_SECONDS = 1500;
 
     public function __construct(
-        protected OAuthTokenRefresher $tokenRefresher,
+        protected ImapClientFactory $clientFactory,
     ) {}
 
     /**
@@ -1050,36 +1049,6 @@ class ImapSyncService
 
     protected function buildClient(MailAccount $account): Client
     {
-        // Seed the manager with the app's imap config so its `options` (e.g.
-        // fallback_date) actually apply. ClientManager::make() reads the
-        // manager's own top-level `options` for the client — the per-account
-        // config we pass below only carries connection details — so a bare
-        // `new ClientManager` would silently fall back to the package defaults
-        // and ignore config/imap.php entirely (see ZERO-51).
-        $imapConfig = config('imap');
-        $cm = new ClientManager(is_array($imapConfig) ? $imapConfig : []);
-
-        $config = [
-            'host' => $account->imap_host,
-            'port' => $account->imap_port,
-            'encryption' => $account->imap_encryption,
-            'validate_cert' => true,
-            'username' => $account->imap_username,
-            // Without this, a stalled connection (wrong host, firewall
-            // silently dropping packets, etc.) hangs until the job's own
-            // 2-hour timeout — not something a "syncing" status should ever
-            // visibly sit at.
-            'timeout' => 30,
-        ];
-
-        if ($account->usesOAuth()) {
-            $accessToken = $this->tokenRefresher->freshAccessToken($account);
-            $config['password'] = $accessToken;
-            $config['authentication'] = 'oauth';
-        } else {
-            $config['password'] = $account->imap_password;
-        }
-
-        return $cm->make($config);
+        return $this->clientFactory->make($account);
     }
 }

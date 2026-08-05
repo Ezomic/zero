@@ -10,7 +10,6 @@ use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
 use Webklex\PHPIMAP\Client;
-use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Folder;
 
 /**
@@ -25,6 +24,7 @@ class MailSenderService
 {
     public function __construct(
         protected OAuthTokenRefresher $tokenRefresher,
+        protected ImapClientFactory $clientFactory,
     ) {}
 
     /**
@@ -176,15 +176,7 @@ class MailSenderService
 
     protected function makeImapClient(MailAccount $account): Client
     {
-        return (new ClientManager)->make([
-            'host' => $account->imap_host,
-            'port' => $account->imap_port,
-            'encryption' => $account->imap_encryption,
-            'validate_cert' => true,
-            'username' => $account->imap_username,
-            'password' => $account->imap_password,
-            'timeout' => 30,
-        ]);
+        return $this->clientFactory->make($account);
     }
 
     /**

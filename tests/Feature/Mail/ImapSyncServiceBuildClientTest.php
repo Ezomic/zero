@@ -4,6 +4,7 @@ namespace Tests\Feature\Mail;
 
 use App\Models\MailAccount;
 use App\Models\User;
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,8 +31,8 @@ class ImapSyncServiceBuildClientTest extends TestCase
         // and one message with an unparseable Date header aborted the sync.
         config()->set('imap.options.fallback_date', '1970-01-01 00:00:00');
 
-        $refresher = Mockery::mock(OAuthTokenRefresher::class);
-        $service = new TestableImapSyncServiceForBuildClient($refresher);
+        $clients = new ImapClientFactory(Mockery::mock(OAuthTokenRefresher::class));
+        $service = new TestableImapSyncServiceForBuildClient($clients);
         $account = MailAccount::factory()->create([
             'user_id' => User::factory(),
             'provider' => MailAccount::PROVIDER_IMAP,
