@@ -69,7 +69,41 @@
 
         @php
             $calendarEvents = $message->calendarEvents;
+            $invitation = $invitation ?? null;
         @endphp
+
+        @if ($invitation)
+            <div class="invite">
+                <div class="invite-head">
+                    <svg class="ic-sm"><use href="#i-calendar"/></svg>
+                    <strong>{{ $invitation->isCancellation() ? 'Cancelled invitation' : 'Invitation' }}</strong>
+                </div>
+                <div class="invite-title">{{ $invitation->title }}</div>
+                <div class="invite-meta">{{ $invitation->humanSpan() }} ({{ $invitation->timezone }})</div>
+                @if ($invitation->location)
+                    <div class="invite-meta">{{ $invitation->location }}</div>
+                @endif
+                @if ($invitation->organiser)
+                    <div class="invite-meta">Organised by {{ $invitation->organiser }}</div>
+                @endif
+
+                @if ($invitation->isCancellation())
+                    <div class="invite-meta">The organiser cancelled this meeting, so there is nothing to add.</div>
+                @elseif (config('services.calendar.token'))
+                    <form method="POST" action="{{ route('inbox.calendarEvent', $message) }}" style="margin-top:10px;">
+                        @csrf
+                        <input type="hidden" name="title" value="{{ $invitation->title }}">
+                        <input type="hidden" name="starts_at" value="{{ $invitation->startsAtInOwnZone()->format('Y-m-d\TH:i') }}">
+                        <input type="hidden" name="ends_at" value="{{ $invitation->endsAtInOwnZone()->format('Y-m-d\TH:i') }}">
+                        <input type="hidden" name="timezone" value="{{ $invitation->timezone }}">
+                        @if ($invitation->location)
+                            <input type="hidden" name="description" value="{{ $invitation->location }}">
+                        @endif
+                        <button type="submit" class="btn sm">Add to calendar</button>
+                    </form>
+                @endif
+            </div>
+        @endif
 
         @if ($calendarEvents->isNotEmpty())
             <div class="attach-row">

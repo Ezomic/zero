@@ -25,3 +25,12 @@ parameters:
         # across that vendor call boundary, so it can't tell the surrounding try/catch is reachable.
         - identifier: catch.neverThrown
           path: app/Console/Commands/IdleMailboxCommand.php
+        # Every sabre/vobject node descends from Sabre\VObject\Node, which
+        # implements IteratorAggregate without declaring @template, so naming
+        # any of them in a signature is reported as an unspecified iterable
+        # value type. There is nothing to annotate on our side short of not
+        # naming the library's types at all, which would mean passing mixed
+        # around and re-narrowing it at every use. The values actually read
+        # off those nodes are narrowed with instanceof in the parser itself.
+        - identifier: missingType.iterableValue
+          path: app/Services/Mail/InvitationParser.php

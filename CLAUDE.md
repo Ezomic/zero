@@ -211,6 +211,31 @@ Refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones;
 re-running for an already-provisioned account is a no-op.
 `mail:idle:deprovision {account}` is the counterpart.
 
+### Calendar invitations
+
+A message carrying a `text/calendar` part or a `.ics` attachment gets an
+invitation block in the reading pane, with a one-click "Add to calendar" that
+posts the parsed times to the same Chronos route as the manual modal (so it is
+recorded the same way — see `calendar_events`).
+
+`InvitationParser` wraps **sabre/vobject** rather than reading the file by
+hand: RFC 5545 has line folding, escaping, a dozen date forms and embedded
+VTIMEZONE blocks, and an invitation is untrusted input from an arbitrary
+sender. Everything read off a sabre node is narrowed with `instanceof`, since
+its property access is magic and returns `mixed`.
+
+Deliberate behaviour worth knowing:
+- Anything unparseable returns `null` and the pane falls back to the manual
+  modal. It never throws mid-render.
+- A recurring invite uses the master event, not an override that happens to
+  come first in the document.
+- `METHOD:CANCEL` is shown but offers nothing to add.
+- Outlook's Windows zone names (`W. Europe Standard Time`) are not zones PHP
+  knows. The parsed instant is still correct; only the displayed label falls
+  back to the app timezone. No mapping table.
+- Detection matches on mime *or* extension, since plenty of senders attach a
+  bare `invite.ics` as `application/octet-stream`.
+
 ### Events
 
 **`NewEmailArrived`** (`app/Events/NewEmailArrived.php`)
