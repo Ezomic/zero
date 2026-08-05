@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Carbon\Carbon;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Mockery;
@@ -59,7 +60,7 @@ class ImapSyncServiceStoreMessageTest extends TestCase
         Mockery::close();
     }
 
-    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null): Message
+    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null, bool $hasDate = true): Message
     {
         $message = Mockery::mock(Message::class);
         $message->shouldReceive('getUid')->andReturn($uid);
@@ -87,13 +88,13 @@ class ImapSyncServiceStoreMessageTest extends TestCase
                 return $this->subject;
             }
         });
-        $message->shouldReceive('getDate')->andReturn(new class
+        $message->shouldReceive('getDate')->andReturn($hasDate ? new class
         {
             public function toDate(): Carbon
             {
                 return Carbon::parse('2026-01-01T00:00:00Z');
             }
-        });
+        } : null);
 
         return $message;
     }
@@ -180,6 +181,36 @@ class ImapSyncServiceStoreMessageTest extends TestCase
 
         $this->assertNotSame($original->id, $moved->id);
         $this->assertSame($original->ulid, $moved->ulid);
+    }
+
+    public function test_a_message_with_no_parseable_date_still_stores_and_broadcasts(): void
+    {
+        Event::fake([NewEmailArrived::class]);
+
+        $message = $this->makeMessage(uid: 506, isRead: false, hasDate: false);
+
+        $uid = $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: true);
+
+        $this->assertSame(506, $uid);
+        $this->assertDatabaseHas('emails', ['uid' => '506', 'sent_at' => null]);
+        Event::assertDispatched(NewEmailArrived::class, fn (NewEmailArrived $event) => $event->sentAt !== '');
+    }
+
+    public function test_a_message_whose_date_header_cannot_be_parsed_still_stores(): void
+    {
+        $message = $this->makeMessage(uid: 507, isRead: false, hasDate: false);
+        $message->shouldReceive('getDate')->andReturn(new class
+        {
+            public function toDate(): Carbon
+            {
+                throw new InvalidFormatException('Unexpected data found.');
+            }
+        });
+
+        $uid = $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: true);
+
+        $this->assertSame(507, $uid);
+        $this->assertDatabaseHas('emails', ['uid' => '507', 'sent_at' => null]);
     }
 
     public function test_broadcast_carries_the_real_email_id_not_a_hardcoded_zero(): void
