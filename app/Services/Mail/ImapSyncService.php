@@ -19,7 +19,6 @@ use RuntimeException;
 use Webklex\PHPIMAP\Attachment;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
-use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\Folder;
 use Webklex\PHPIMAP\Message;
 
@@ -229,7 +228,7 @@ class ImapSyncService
     /**
      * Begin capturing webklex's echoed IMAP protocol traffic when IMAP_DEBUG is
      * on, so it is masked into the imap log rather than leaking to stdout — or,
-     * for web-context callers (fetchBody/applyAction), into the HTTP response
+     * for web-context callers (fetchBody), into the HTTP response
      * body, which would expose the account's credentials. Returns whether an
      * output buffer was opened; the caller must ob_end_flush() it in a finally.
      */
@@ -317,64 +316,6 @@ class ImapSyncService
                     ]);
                 }
             }
-        } finally {
-            if ($capturingImapTraffic) {
-                ob_end_flush();
-            }
-        }
-    }
-
-    /**
-     * Apply a local action to the matching remote message, best-effort. Used
-     * by ApplyEmailFlagJob so archive/delete/read/move state eventually
-     * syncs back to the mail server without blocking the request that
-     * triggered it. $action is 'mark_read' | 'mark_unread' | 'delete' or
-     * 'move:<local folder name>'.
-     *
-     * $sourceUid overrides $email->uid for locating the remote message.
-     * Needed for moves: the controller nulls the local uid column before
-     * dispatching (its old value could collide with an unrelated message
-     * already filed under the destination folder, since IMAP UIDs are only
-     * unique per-folder), so by the time this job runs $email->uid no
-     * longer reflects where the message actually sits on the server.
-     */
-    public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
-    {
-        $account = $email->requireMailAccount();
-        $capturingImapTraffic = $this->beginImapTrafficCapture($account);
-
-        try {
-            $remotePath = $email->remote_folder_path ?: $email->folder;
-            $uid = (int) ($sourceUid ?? $email->uid);
-
-            $client = $this->buildClient($account);
-            $client->connect();
-
-            // Moves need the destination UID handed back (see applyMove), which
-            // only the high-level API gives us, so they keep paying for the
-            // message fetch. Everything else is a UID-addressed command that
-            // needs no message object at all.
-            if (str_starts_with($action, 'move:')) {
-                $folder = $client->getFolder($remotePath);
-
-                if (! $folder) {
-                    return;
-                }
-
-                $this->applyMove($email, $account, $folder->messages()->getMessageByUid($uid), substr($action, 5));
-
-                return;
-            }
-
-            $connection = $client->getConnection();
-            $connection->selectFolder($remotePath);
-
-            match ($action) {
-                'mark_read' => $this->assertImapOk($connection->store(['\Seen'], $uid, null, '+'), 'mark_read', $uid),
-                'mark_unread' => $this->assertImapOk($connection->store(['\Seen'], $uid, null, '-'), 'mark_unread', $uid),
-                'delete' => $this->applyDelete($account, $client, $uid),
-                default => null,
-            };
         } finally {
             if ($capturingImapTraffic) {
                 ob_end_flush();
@@ -763,29 +704,6 @@ class ImapSyncService
     }
 
     /**
-     * Deleting is "move to the server's trash, then expunge", addressed purely
-     * by UID. Fetching the message first cost ~24s on a large Gmail mailbox
-     * (ZERO-78) and told us nothing the UID doesn't.
-     */
-    protected function applyDelete(MailAccount $account, Client $client, int $uid): void
-    {
-        $trashPath = $this->trashPathFor($account, $client);
-        $connection = $client->getConnection();
-
-        if ($trashPath === null) {
-            // No trash to move into: flag and expunge in place, which is what
-            // the high-level delete() falls back to.
-            $this->assertImapOk($connection->store(['\Deleted'], $uid, null, '+'), 'delete', $uid);
-            $connection->expunge();
-
-            return;
-        }
-
-        $this->assertImapOk($connection->moveMessage($trashPath, $uid), 'delete', $uid);
-        $connection->expunge();
-    }
-
-    /**
      * Prefer the trash folder we already recorded during sync; enumerating the
      * folder tree to guess it cost ~3s on every single action.
      */
@@ -800,13 +718,6 @@ class ImapSyncService
         }
 
         return $this->guessTrashPath($client);
-    }
-
-    protected function assertImapOk(Response $response, string $action, int $uid): void
-    {
-        if (! $response->boolean()) {
-            throw new RuntimeException("IMAP {$action} failed for uid {$uid}");
-        }
     }
 
     protected function guessTrashPath(Client $client): ?string

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Mail;
 
 use App\Actions\Mail\QueueMirrorAction;
-use App\Jobs\ApplyEmailFlagJob;
 use App\Jobs\DrainMirrorActionsJob;
 use App\Jobs\SyncMailAccountJob;
 use App\Models\Email;
@@ -21,18 +20,6 @@ class QueueRoutingTest extends TestCase
     private function account(): MailAccount
     {
         return MailAccount::factory()->for(User::factory())->create();
-    }
-
-    public function test_mirror_backs_go_to_the_flags_queue(): void
-    {
-        Queue::fake();
-
-        $account = $this->account();
-        $email = Email::factory()->for($account, 'mailAccount')->create();
-
-        ApplyEmailFlagJob::dispatch($email, 'mark_read');
-
-        Queue::assertPushedOn('flags', ApplyEmailFlagJob::class);
     }
 
     public function test_mirror_drains_go_to_the_flags_queue(): void

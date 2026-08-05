@@ -173,11 +173,6 @@ any API/IMAP operation on OAuth accounts.
   `PendingMirrorAction::MAX_ATTEMPTS` the row is stamped `failed_at` and left
   for inspection.
 
-**`ApplyEmailFlagJob`** — superseded, kept only so mirror-backs queued before
-ZERO-78 can still drain. Nothing dispatches it any more; new actions go through
-`QueueMirrorAction` into `pending_mirror_actions`. Safe to delete once no old
-payloads remain in the queue.
-
 ### Commands
 
 **`mail:sync [--account=ID]`** (`SyncMailboxesCommand`)
