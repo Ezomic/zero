@@ -118,12 +118,24 @@ The core sync engine. Called by `SyncMailAccountJob`.
   Falls back to full fetch when `last_uid = 0` (first sync) or `uid_validity`
   changes (folder was recreated). For each new message: inserts into `emails`,
   broadcasts `NewEmailArrived` event, fires macOS notification via `osascript`.
-  For existing messages: reconciles the `is_read` flag against the server's
-  `\Seen` flag (catches reads on other devices).
+- `reconcileRemoteState()` — runs on every incremental sync, before the fetch.
+  The fetch itself only ever sees UIDs above the cursor, so nothing it returns
+  says anything about messages already stored: without this, a message read on
+  another device stayed unread here forever and one deleted elsewhere never
+  left the list (ZERO-90). Two commands, both flat in cost regardless of folder
+  size: the UID list is already in hand (anything local and missing from it was
+  expunged or moved away server-side), and one `UID SEARCH UNSEEN` gives the
+  server's read state for everything still present.
+  Two deliberate refusals: an empty UID list reconciles nothing, since a failed
+  fetch and a genuinely emptied folder look identical and only one of them is
+  safe to act on; and a message with a row in `pending_mirror_actions` is
+  skipped, because until the drain runs the server still reports our own
+  unpushed change as not having happened.
 - `fetchBody(Email)` — fetches HTML/text body and attachments on demand.
   Called the first time a message is opened.
-- `applyAction(Email, string)` — mirrors a local action back to IMAP.
-  Actions: `mark_read`, `mark_unread`, `delete`, `move:<localName>`.
+- `applyPendingActions(MailAccount, Collection)` — mirrors queued local actions
+  back to IMAP in one session. Actions: `mark_read`, `mark_unread`, `delete`,
+  `move:<localName>`.
 
 Folder discovery (`foldersToSync()`):
 - `INBOX` always synced.
