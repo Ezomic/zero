@@ -8,6 +8,7 @@ use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\User;
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Carbon\Carbon;
@@ -48,8 +49,8 @@ class ImapSyncServiceSyncFolderTest extends TestCase
     {
         parent::setUp();
 
-        $refresher = Mockery::mock(OAuthTokenRefresher::class);
-        $this->service = new TestableImapSyncServiceForSyncFolder($refresher);
+        $clients = new ImapClientFactory(Mockery::mock(OAuthTokenRefresher::class));
+        $this->service = new TestableImapSyncServiceForSyncFolder($clients);
 
         $user = User::factory()->create();
         $this->account = MailAccount::factory()->create(['user_id' => $user->id]);

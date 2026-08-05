@@ -4,6 +4,7 @@ namespace Tests\Feature\Mail;
 
 use App\Models\MailAccount;
 use App\Models\User;
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,8 +32,8 @@ class ImapTrafficLoggingTest extends TestCase
             $logged[] = $message;
         });
 
-        $refresher = Mockery::mock(OAuthTokenRefresher::class);
-        $service = new TestableImapSyncServiceForLogging($refresher);
+        $clients = new ImapClientFactory(Mockery::mock(OAuthTokenRefresher::class));
+        $service = new TestableImapSyncServiceForLogging($clients);
         $account = MailAccount::factory()->create(['user_id' => User::factory()]);
 
         $handler = $service->callImapTrafficLogger($account);

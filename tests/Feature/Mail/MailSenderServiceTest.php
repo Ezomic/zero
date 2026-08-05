@@ -4,6 +4,7 @@ namespace Tests\Feature\Mail;
 
 use App\Models\MailAccount;
 use App\Models\User;
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\MailSenderService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,7 +47,7 @@ class MailSenderServiceTest extends TestCase
         $refresher = Mockery::mock(OAuthTokenRefresher::class);
         $refresher->shouldReceive('freshAccessToken')->andReturn('gmail-token');
 
-        $service = new MailSenderService($refresher);
+        $service = new MailSenderService($refresher, new ImapClientFactory($refresher));
         $service->send($account, [
             'to' => ['recipient@example.com'],
             'subject' => 'Hello',
@@ -82,7 +83,7 @@ class MailSenderServiceTest extends TestCase
         $refresher = Mockery::mock(OAuthTokenRefresher::class);
         $refresher->shouldReceive('freshAccessToken')->andReturn('ms-token');
 
-        $service = new MailSenderService($refresher);
+        $service = new MailSenderService($refresher, new ImapClientFactory($refresher));
         $service->send($account, [
             'to' => ['recipient@example.com'],
             'cc' => ['cc@example.com'],
@@ -121,7 +122,7 @@ class MailSenderServiceTest extends TestCase
         $refresher = Mockery::mock(OAuthTokenRefresher::class);
         $refresher->shouldReceive('freshAccessToken')->andReturn('gmail-token');
 
-        $service = new MailSenderService($refresher);
+        $service = new MailSenderService($refresher, new ImapClientFactory($refresher));
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/Gmail send failed/');
@@ -144,7 +145,7 @@ class MailSenderServiceTest extends TestCase
             'smtp_password' => 'p@ss word',
         ]);
 
-        $service = new MailSenderService(Mockery::mock(OAuthTokenRefresher::class));
+        $service = new MailSenderService($refresher = Mockery::mock(OAuthTokenRefresher::class), new ImapClientFactory($refresher));
 
         $dsn = new \ReflectionMethod(MailSenderService::class, 'smtpDsn');
         $dsn->setAccessible(true);
@@ -215,7 +216,7 @@ class MailSenderServiceTest extends TestCase
 
         $refresher = Mockery::mock(OAuthTokenRefresher::class);
 
-        $service = Mockery::mock(MailSenderService::class, [$refresher])->makePartial();
+        $service = Mockery::mock(MailSenderService::class, [$refresher, new ImapClientFactory($refresher)])->makePartial();
         $service->shouldAllowMockingProtectedMethods()
             ->shouldReceive('makeImapClient')
             ->with($account)

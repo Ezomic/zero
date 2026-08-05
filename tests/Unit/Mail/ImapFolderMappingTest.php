@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Mail;
 
+use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
 use Mockery;
@@ -25,8 +26,8 @@ class ImapFolderMappingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $refresher = Mockery::mock(OAuthTokenRefresher::class);
-        $this->service = new TestableImapSyncService($refresher);
+        $clients = new ImapClientFactory(Mockery::mock(OAuthTokenRefresher::class));
+        $this->service = new TestableImapSyncService($clients);
     }
 
     protected function tearDown(): void
