@@ -9,6 +9,9 @@ use App\Services\Mail\OAuthTokenRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery;
+use Symfony\Component\Mailer\Transport;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\Folder;
@@ -128,6 +131,72 @@ class MailSenderServiceTest extends TestCase
             'subject' => 'X',
             'html' => '<p>X</p>',
         ]);
+    }
+
+    private function dsnFor(?string $encryption, int $port): string
+    {
+        $account = MailAccount::factory()->make([
+            'user_id' => $this->user->id,
+            'smtp_host' => 'smtp.example.com',
+            'smtp_port' => $port,
+            'smtp_encryption' => $encryption,
+            'smtp_username' => 'me@example.com',
+            'smtp_password' => 'p@ss word',
+        ]);
+
+        $service = new MailSenderService(Mockery::mock(OAuthTokenRefresher::class));
+
+        $dsn = new \ReflectionMethod(MailSenderService::class, 'smtpDsn');
+        $dsn->setAccessible(true);
+
+        return (string) $dsn->invoke($service, $account);
+    }
+
+    public function test_ssl_accounts_get_an_implicit_tls_dsn(): void
+    {
+        $this->assertStringStartsWith('smtps://', $this->dsnFor('ssl', 465));
+        $this->assertStringEndsWith('@smtp.example.com:465', $this->dsnFor('ssl', 465));
+    }
+
+    public function test_tls_accounts_stay_on_smtp_so_starttls_is_negotiated(): void
+    {
+        $this->assertStringStartsWith('smtp://', $this->dsnFor('tls', 587));
+    }
+
+    public function test_an_account_with_no_encryption_stays_on_smtp(): void
+    {
+        $this->assertStringStartsWith('smtp://', $this->dsnFor(null, 25));
+    }
+
+    public function test_credentials_are_url_encoded_in_the_dsn(): void
+    {
+        $dsn = $this->dsnFor('tls', 587);
+
+        $this->assertStringContainsString('me%40example.com:p%40ss%20word@', $dsn);
+    }
+
+    /**
+     * The scheme is only worth changing if Symfony acts on it, so assert the
+     * socket it builds rather than the string we handed it.
+     */
+    public function test_only_the_ssl_dsn_wraps_the_socket_in_tls(): void
+    {
+        $this->assertTrue($this->streamUsesTls($this->dsnFor('ssl', 465)));
+        $this->assertFalse($this->streamUsesTls($this->dsnFor('tls', 587)));
+    }
+
+    private function streamUsesTls(string $dsn): bool
+    {
+        $transport = Transport::fromDsn($dsn);
+
+        $getStream = new \ReflectionMethod(EsmtpTransport::class, 'getStream');
+        $getStream->setAccessible(true);
+        $stream = $getStream->invoke($transport);
+
+        $tls = new \ReflectionProperty(SocketStream::class, 'tls');
+        $tls->setAccessible(true);
+
+        return (bool) $tls->getValue($stream);
     }
 
     public function test_append_to_sent_folder_appends_on_the_folder_not_the_client(): void
