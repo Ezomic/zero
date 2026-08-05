@@ -114,21 +114,36 @@ class MailSenderService
      */
     protected function sendViaSmtp(MailAccount $account, array $message): void
     {
-        $dsn = sprintf(
-            'smtp://%s:%s@%s:%d',
-            rawurlencode($account->smtp_username ?? ''),
-            rawurlencode($account->smtp_password ?? ''),
-            $account->smtp_host,
-            $account->smtp_port,
-        );
-
-        $transport = Transport::fromDsn($dsn);
+        $transport = Transport::fromDsn($this->smtpDsn($account));
         $mailer = new Mailer($transport);
 
         $mime = $this->buildMimeMessage($account, $message);
         $mailer->send($mime);
 
         $this->appendToSentFolder($account, $mime->toString());
+    }
+
+    /**
+     * The account's stored encryption decides the scheme, since the two modes
+     * are not interchangeable: 'ssl' is implicit TLS, where the connection is
+     * wrapped before the SMTP greeting, and Symfony only does that for smtps.
+     * Under plain smtp it would send a cleartext EHLO into a TLS listener and
+     * hang, which is what an account on port 465 was doing (ZERO-89).
+     *
+     * 'tls' and no encryption both stay on smtp: that leaves Symfony to
+     * negotiate STARTTLS when the server advertises it, which is the correct
+     * behaviour for a submission port and degrades on one that doesn't.
+     */
+    protected function smtpDsn(MailAccount $account): string
+    {
+        return sprintf(
+            '%s://%s:%s@%s:%d',
+            $account->smtp_encryption === 'ssl' ? 'smtps' : 'smtp',
+            rawurlencode($account->smtp_username ?? ''),
+            rawurlencode($account->smtp_password ?? ''),
+            $account->smtp_host,
+            $account->smtp_port,
+        );
     }
 
     protected function appendToSentFolder(MailAccount $account, string $rawMessage): void
