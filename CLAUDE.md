@@ -188,7 +188,16 @@ Opens a persistent IMAP IDLE connection on the account's INBOX. When the server
 pushes a notification (new message, flag change, expunge), dispatches
 `SyncMailAccountJob`. launchd restarts this command if the connection drops
 (servers terminate idle connections after ~30 min). Only active accounts have
-a launchd agent; see TODOs in README.md for adding new ones.
+a launchd agent.
+
+**`mail:idle:provision {account}`** (`ProvisionIdleWatcherCommand`)
+
+Sets up the watcher process for an account. On macOS it writes the launchd
+plist and loads it; on production it prints the supervisor block and the
+`supervisorctl` commands rather than editing the shared `mail.conf` itself.
+Refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones;
+re-running for an already-provisioned account is a no-op.
+`mail:idle:deprovision {account}` is the counterpart.
 
 ### Events
 

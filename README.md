@@ -173,22 +173,32 @@ php artisan mail:sync --account=1
 - Gmail's OAuth consent screen stays in "Testing" mode (100 user cap) until
   you submit for verification — fine for personal/internal use.
 
-## TODOs
+## Adding an idle agent for a new account
 
-### IMAP IDLE agents for accounts 7 and 8
-
-Once auth is fixed for `robbin_thijssen@hotmail.nl` (account 7) and
-`ezomic@gmail.com` (account 8), create a launchd agent for each:
+Adding a MailAccount does **not** automatically start a watcher for it, so
+until you run this the account only syncs on the 5-minute schedule:
 
 ```bash
-# Copy nl.thijssensoftware.zero.idle.6.plist, change the label and
-# the account argument (6 → 7, 6 → 8), then:
-launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.idle.7.plist
-launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.idle.8.plist
+php artisan mail:idle:provision {id}
 ```
+
+Locally this writes the launchd plist and loads it. On production it prints
+the `[program:mail-idle-{id}]` block to add to
+`/etc/supervisor/conf.d/mail.conf` plus the `supervisorctl reread`/`update`
+commands, for the same reason the deprovision command does not edit that file
+itself.
+
+It refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones,
+and re-running it for an account that already has a plist is a no-op.
 
 Add the new agent names to the `AGENTS` array in `~/bin/workers` and add
 rotation entries to `~/Library/Logs/newsyslog-workers.conf`.
+
+### Still to provision
+
+`robbin_thijssen@hotmail.nl` (account 7) is inactive, so it needs its auth
+fixed before it can be provisioned. `ezomic@gmail.com` (account 8) is active
+and has no watcher yet.
 
 ### Removing an idle agent when an account is deleted
 
