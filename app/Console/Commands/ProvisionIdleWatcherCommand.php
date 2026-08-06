@@ -12,12 +12,19 @@ class ProvisionIdleWatcherCommand extends Command
 
     protected $description = 'Set up the launchd/supervisor process that holds an IMAP IDLE connection for an account';
 
+    /** Where production's supervisor programs for this app actually live. */
+    public const SUPERVISOR_CONF = '/etc/supervisor/conf.d/zero.conf';
+
+    /** Program names in that file are zero-*, and scripts/deploy.sh restarts
+     *  them by name — an idle watcher called anything else is never restarted. */
+    public const PROGRAM_PREFIX = 'zero-idle-';
+
     /**
      * The counterpart to mail:idle:deprovision, and deliberately manual in the
      * same way (see THI-239). On production the idle watchers share
-     * /etc/supervisor/conf.d/mail.conf with mail-queue, mail-scheduler and
-     * mail-reverb, so rewriting that file from the app risks taking the other
-     * three down on a bad edit; there this only prints the exact steps.
+     * zero.conf with zero-queue, zero-queue-flags, zero-scheduler and
+     * zero-reverb, so rewriting that file from the app risks taking the other
+     * four down on a bad edit; there this only prints the exact steps.
      */
     public function handle(): int
     {
@@ -89,26 +96,54 @@ class ProvisionIdleWatcherCommand extends Command
 
     protected function printProductionSteps(MailAccount $account): int
     {
-        $this->line('On production, idle watchers live in /etc/supervisor/conf.d/mail.conf alongside mail-queue, mail-scheduler and mail-reverb.');
+        $program = self::PROGRAM_PREFIX.$account->id;
+
+        $this->line('On production, idle watchers live in '.self::SUPERVISOR_CONF.' alongside zero-queue, zero-queue-flags, zero-scheduler and zero-reverb.');
         $this->newLine();
         $this->line('1. Add this block to that file:');
         $this->newLine();
-        $this->line("[program:mail-idle-{$account->id}]");
-        $this->line('command='.PHP_BINARY.' '.base_path('artisan')." mail:idle {$account->id}");
-        $this->line('directory='.base_path());
-        $this->line('autostart=true');
-        $this->line('autorestart=true');
-        $this->line('startsecs=10');
-        $this->line('user=deploy');
-        $this->line("stdout_logfile=/var/log/supervisor/mail-idle-{$account->id}.log");
-        $this->line('redirect_stderr=true');
+
+        foreach ($this->supervisorBlock($account) as $line) {
+            $this->line($line);
+        }
+
         $this->newLine();
         $this->line('2. sudo supervisorctl reread');
         $this->line('3. sudo supervisorctl update');
         $this->newLine();
-        $this->line('These three sudo commands are already passwordless for the deploy user — see `sudo -l`.');
+        $this->line("Then add {$program} to the restart list in scripts/deploy.sh, or it keeps");
+        $this->line('serving the previous release after every deploy.');
+        $this->newLine();
+        $this->line('The supervisorctl commands are already passwordless for the deploy user — see `sudo -l`.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Mirrors the shape of the blocks already in zero.conf rather than
+     * inventing one: same process_name, same stop/kill group settings, and a
+     * log path under the app's own storage/logs like its siblings.
+     *
+     * @return list<string>
+     */
+    protected function supervisorBlock(MailAccount $account): array
+    {
+        $program = self::PROGRAM_PREFIX.$account->id;
+
+        return [
+            "[program:{$program}]",
+            'process_name=%(program_name)s_%(process_num)02d',
+            'command=php '.base_path('artisan')." mail:idle {$account->id}",
+            'autostart=true',
+            'autorestart=true',
+            'stopasgroup=true',
+            'killasgroup=true',
+            'user=deploy',
+            'numprocs=1',
+            'redirect_stderr=true',
+            'stdout_logfile='.base_path("storage/logs/idle-{$account->id}.log"),
+            'stopwaitsecs=60',
+        ];
     }
 
     protected function plist(string $label, MailAccount $account, string $home): string

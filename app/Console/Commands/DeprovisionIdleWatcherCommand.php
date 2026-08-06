@@ -13,8 +13,8 @@ class DeprovisionIdleWatcherCommand extends Command
 
     // Run this by hand right after deleting an account — it's a deliberate
     // manual step (see THI-239), not wired into account deletion itself. On
-    // production, mail-idle-{id} lives alongside mail-queue/mail-scheduler/
-    // mail-reverb in the same /etc/supervisor/conf.d/mail.conf, so rewriting
+    // production, zero-idle-{id} lives alongside zero-queue/zero-queue-flags/
+    // zero-scheduler/zero-reverb in the same zero.conf, so rewriting
     // that file automatically from a web request risks taking down the other
     // three workers on a bad edit. This only prints the exact steps instead.
     public function handle(): int
@@ -25,13 +25,19 @@ class DeprovisionIdleWatcherCommand extends Command
             return $this->deprovisionLocal($id);
         }
 
-        $this->line("On production, mail-idle-{$id} is defined in /etc/supervisor/conf.d/mail.conf alongside mail-queue, mail-scheduler, and mail-reverb.");
+        $program = ProvisionIdleWatcherCommand::PROGRAM_PREFIX.$id;
+        $conf = ProvisionIdleWatcherCommand::SUPERVISOR_CONF;
+
+        $this->line("On production, {$program} is defined in {$conf} alongside zero-queue, zero-queue-flags, zero-scheduler and zero-reverb.");
         $this->newLine();
-        $this->line('1. Remove the [program:mail-idle-'.$id.'] block from that file.');
+        $this->line("1. Remove the [program:{$program}] block from that file.");
         $this->line('2. sudo supervisorctl reread');
         $this->line('3. sudo supervisorctl update');
         $this->newLine();
-        $this->line('These three sudo commands are already passwordless for the deploy user — see `sudo -l`.');
+        $this->line("Then drop {$program} from the restart list in scripts/deploy.sh, or the");
+        $this->line('next deploy fails trying to restart a program that no longer exists.');
+        $this->newLine();
+        $this->line('The supervisorctl commands are already passwordless for the deploy user — see `sudo -l`.');
 
         return self::SUCCESS;
     }

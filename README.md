@@ -183,8 +183,8 @@ php artisan mail:idle:provision {id}
 ```
 
 Locally this writes the launchd plist and loads it. On production it prints
-the `[program:mail-idle-{id}]` block to add to
-`/etc/supervisor/conf.d/mail.conf` plus the `supervisorctl reread`/`update`
+the `[program:zero-idle-{id}]` block to add to
+`/etc/supervisor/conf.d/zero.conf` plus the `supervisorctl reread`/`update`
 commands, for the same reason the deprovision command does not edit that file
 itself.
 
@@ -210,10 +210,10 @@ php artisan mail:idle:deprovision {id}
 ```
 
 Locally this unloads and removes the launchd plist for you. On production it
-prints the `[program:mail-idle-{id}]` block to remove from
-`/etc/supervisor/conf.d/mail.conf` plus the `supervisorctl reread`/`update`
-commands to run — it won't edit that file itself, since `mail-queue`,
-`mail-scheduler`, and `mail-reverb` are defined in the same file and a bad
+prints the `[program:zero-idle-{id}]` block to remove from
+`/etc/supervisor/conf.d/zero.conf` plus the `supervisorctl reread`/`update`
+commands to run — it won't edit that file itself, since `zero-queue`,
+`zero-queue-flags`, `zero-scheduler`, and `zero-reverb` are defined in the same file and a bad
 edit could take those down too.
 
 ### Outlook OAuth (account 7 — robbin_thijssen@hotmail.nl)
