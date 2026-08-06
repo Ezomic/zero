@@ -180,12 +180,51 @@ class ProvisionIdleWatcherCommandTest extends TestCase
         $account = $this->account();
 
         $this->artisan('mail:idle:provision', ['account' => $account->id])
-            ->expectsOutputToContain("[program:mail-idle-{$account->id}]")
+            ->expectsOutputToContain("[program:zero-idle-{$account->id}]")
+            ->expectsOutputToContain('/etc/supervisor/conf.d/zero.conf')
             ->expectsOutputToContain('supervisorctl reread')
             ->expectsOutputToContain('supervisorctl update')
             ->assertExitCode(0);
 
         $this->assertFileDoesNotExist($this->plistPath($account));
         Process::assertNothingRan();
+    }
+
+    /**
+     * The instructions once named a mail.conf that no longer exists, with
+     * mail-idle-* programs the deploy script would never restart (ZERO-100).
+     * Both halves are pinned here so they cannot drift apart again.
+     */
+    public function test_the_printed_program_name_is_one_the_deploy_script_restarts(): void
+    {
+        Process::fake();
+        $this->pretendOs('Linux');
+        $account = $this->account();
+
+        $this->artisan('mail:idle:provision', ['account' => $account->id])
+            ->expectsOutputToContain('zero-idle-')
+            ->doesntExpectOutputToContain('mail.conf')
+            ->doesntExpectOutputToContain('mail-idle-')
+            ->assertExitCode(0);
+
+        $deployScript = (string) file_get_contents(base_path('scripts/deploy.sh'));
+        $this->assertStringContainsString('zero-idle-', $deployScript);
+    }
+
+    public function test_the_printed_block_matches_the_shape_of_the_existing_programs(): void
+    {
+        Process::fake();
+        $this->pretendOs('Linux');
+        $account = $this->account();
+
+        // Same knobs the sibling programs in zero.conf are configured with,
+        // so a watcher added from this output behaves like the others.
+        $this->artisan('mail:idle:provision', ['account' => $account->id])
+            ->expectsOutputToContain('process_name=%(program_name)s_%(process_num)02d')
+            ->expectsOutputToContain('command=php '.base_path('artisan')." mail:idle {$account->id}")
+            ->expectsOutputToContain('stopasgroup=true')
+            ->expectsOutputToContain('user=deploy')
+            ->expectsOutputToContain(base_path("storage/logs/idle-{$account->id}.log"))
+            ->assertExitCode(0);
     }
 }
