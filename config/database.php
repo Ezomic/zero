@@ -67,7 +67,30 @@ return [
             'busy_timeout' => env('DB_BUSY_TIMEOUT', 180_000),
             'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
             'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // IMMEDIATE, not DEFERRED — this is what makes busy_timeout above
+            // mean anything here (ZERO-84).
+            //
+            // DatabaseQueue::pop() opens a transaction, SELECTs the next job,
+            // then UPDATEs it. Under DEFERRED the SELECT takes only a read
+            // lock, so two workers can both hold one and then both need to
+            // promote to a write. SQLite refuses that promotion with
+            // SQLITE_BUSY *immediately* and never calls the busy handler,
+            // because no amount of waiting can resolve it: one side would have
+            // to give up its read lock, and neither will. Measured with two
+            // concurrent workers against 50 jobs: under DEFERRED the second
+            // worker failed all 25 of its attempts at 0ms each and half the
+            // queue went unclaimed; under IMMEDIATE both drained it with no
+            // failures.
+            //
+            // IMMEDIATE takes the write lock at BEGIN instead, where the busy
+            // handler does apply, so the second worker waits (measured: the
+            // full timeout) rather than dying. A pop transaction lasts
+            // milliseconds, so in practice it waits microseconds.
+            //
+            // This also covers cache_locks, which shares this file: a
+            // WithoutOverlapping release now queues behind queue polling
+            // instead of failing, which is what ZERO-80 was protecting.
+            'transaction_mode' => 'IMMEDIATE',
         ],
 
         'mysql' => [
