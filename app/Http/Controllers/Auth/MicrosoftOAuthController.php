@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncMailAccountJob;
 use App\Models\MailAccount;
 use Illuminate\Http\RedirectResponse;
 use Laravel\Socialite\Facades\Socialite;
@@ -41,7 +42,7 @@ class MicrosoftOAuthController extends Controller
                 ->with('error', 'Microsoft did not return a refresh token. Try connecting again.');
         }
 
-        MailAccount::updateOrCreate(
+        $account = MailAccount::updateOrCreate(
             [
                 'user_id' => auth()->id(),
                 'email_address' => $msUser->getEmail(),
@@ -63,6 +64,12 @@ class MicrosoftOAuthController extends Controller
                 'is_active' => true,
             ]
         );
+
+        // Fresh credentials mean the account is healthy again, so clear the
+        // failure the accounts page is still rendering and prove it by
+        // syncing (ZERO-105).
+        $account->markHealthy();
+        SyncMailAccountJob::dispatch($account);
 
         return redirect()->route('accounts.index')->with('status', 'Outlook/Hotmail account connected.');
     }
