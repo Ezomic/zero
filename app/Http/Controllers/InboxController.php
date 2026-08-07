@@ -310,9 +310,15 @@ class InboxController extends Controller
             // value separately so it can still find the real message) until
             // the real move reports back the uid the message
             // actually got in its destination.
+            //
+            // Queued before the row moves: QueueMirrorAction records
+            // `remote_folder_path ?: folder`, so queueing after the update
+            // stamps the destination as the action's source folder whenever
+            // remote_folder_path is null, and the drain then looks for the
+            // uid in the folder the message has not reached yet.
             $sourceUid = $message->uid;
-            $message->update(['folder' => $folder, 'uid' => null]);
             $this->queueMirror->handle($message, 'move:'.$folder, $sourceUid);
+            $message->update(['folder' => $folder, 'uid' => null]);
         }
 
         return redirect()->route('inbox.index')->with('status', 'Moved to '.$folder.'.');
