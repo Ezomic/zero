@@ -152,6 +152,10 @@ class ImapSyncService
     {
         $account->update(['sync_status' => 'syncing', 'sync_status_since' => now(), 'sync_error' => null]);
 
+        // Scopes the contact memo to this run, so the queue worker does not
+        // carry one entry per address it has ever seen (ZERO-107).
+        Contact::forgetHandledThisRun();
+
         $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
         try {
