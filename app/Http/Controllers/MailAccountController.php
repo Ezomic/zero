@@ -154,12 +154,7 @@ class MailAccountController extends Controller
     {
         $this->authorizeOwnership($account);
 
-        $account->update([
-            'is_active' => true,
-            'sync_status' => 'idle',
-            'sync_status_since' => now(),
-            'sync_error' => null,
-        ]);
+        $account->markHealthy();
 
         SyncMailAccountJob::dispatch($account);
 

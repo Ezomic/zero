@@ -103,6 +103,25 @@ class MailAccount extends Model
         return $this->oauth_expires_at !== null && $this->oauth_expires_at->isPast();
     }
 
+    /**
+     * Clears the marks left by an auth failure.
+     *
+     * SyncMailAccountJob::failed() deactivates an account and stores the
+     * error, and the accounts page renders both. Every route back to a
+     * working account has to undo all of it, or the account works again while
+     * still showing as broken with a stale message underneath (ZERO-105).
+     * Reconnecting over OAuth used to reset only is_active.
+     */
+    public function markHealthy(): void
+    {
+        $this->forceFill([
+            'is_active' => true,
+            'sync_status' => 'idle',
+            'sync_status_since' => now(),
+            'sync_error' => null,
+        ])->save();
+    }
+
     protected static function booted(): void
     {
         static::creating(function (self $account) {
