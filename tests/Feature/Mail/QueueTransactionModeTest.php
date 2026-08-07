@@ -2,124 +2,124 @@
 
 namespace Tests\Feature\Mail;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * The queue file's transaction mode, verified by contention rather than by
- * reading the config back.
+ * The queue file must begin transactions IMMEDIATE.
  *
  * Two zero-queue workers run against system.sqlite on production. Under
  * DEFERRED they deadlocked promoting a read to a write and the loser died
- * with "database is locked" (ZERO-84). Asserting the config string alone
- * would not have caught that, because DEFERRED is a perfectly valid setting
- * that only misbehaves under concurrency.
+ * with "database is locked", and because SQLite refuses that promotion
+ * without consulting the busy handler, the connection's 180s busy_timeout
+ * never applied (ZERO-84).
+ *
+ * These assert the behaviour through Laravel's own connection rather than
+ * raw PDO, so they still fail if the framework stops honouring
+ * transaction_mode — which it silently does below PHP 8.4, where
+ * SQLiteConnection falls back to PDO::beginTransaction() and always gets
+ * DEFERRED.
  */
 class QueueTransactionModeTest extends TestCase
 {
     private string $dir;
 
+    private string $file;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        // The suite runs sqlite_system on :memory:, which a second connection
+        // cannot open. Point it at a real file so the lock is observable.
         $this->dir = sys_get_temp_dir().'/zero-queue-mode-'.uniqid();
         File::makeDirectory($this->dir, 0755, true);
+        $this->file = $this->dir.'/system.sqlite';
+        touch($this->file);
+
+        config(['database.connections.sqlite_system.database' => $this->file]);
+        DB::purge('sqlite_system');
+
+        DB::connection('sqlite_system')->statement('CREATE TABLE jobs (id INTEGER PRIMARY KEY, reserved_at INTEGER)');
+        DB::connection('sqlite_system')->table('jobs')->insert(['id' => 1, 'reserved_at' => null]);
     }
 
     protected function tearDown(): void
     {
+        DB::purge('sqlite_system');
         File::deleteDirectory($this->dir);
+
         parent::tearDown();
     }
 
-    public function test_the_queue_connection_begins_transactions_immediately(): void
+    public function test_the_queue_connection_is_configured_to_begin_immediately(): void
     {
         $this->assertSame('IMMEDIATE', config('database.connections.sqlite_system.transaction_mode'));
     }
 
     /**
-     * Laravel only issues the configured mode on PHP 8.4 and up
-     * (SQLiteConnection::executeBeginTransactionStatement); below that it
-     * calls PDO::beginTransaction(), which is always DEFERRED.
+     * Below PHP 8.4 the setting is ignored entirely, so the assertion above
+     * would pass while production still deadlocked.
      */
-    public function test_the_runtime_actually_applies_the_configured_mode(): void
+    public function test_the_runtime_is_new_enough_to_apply_the_configured_mode(): void
     {
         $this->assertTrue(
             version_compare(PHP_VERSION, '8.4.0', '>='),
-            'Below PHP 8.4 the transaction_mode setting is ignored and ZERO-84 returns.',
+            'Below PHP 8.4 transaction_mode is ignored and ZERO-84 returns.',
         );
     }
 
-    /** @return array{popped: int, failed: int} */
-    private function raceTwoWorkers(string $mode, int $jobs = 20): array
+    /**
+     * The real check, and deterministic: a transaction opened through Laravel
+     * takes the write lock at BEGIN, so a second connection cannot also take
+     * it. Under DEFERRED the first transaction holds nothing at BEGIN and the
+     * second sails through, which is exactly the state that let two workers
+     * both read and then both try to promote.
+     *
+     * Single-threaded on purpose. An earlier version of this raced two worker
+     * subprocesses, which only produced contention when they happened to
+     * overlap and so failed about 60% of runs (ZERO-111).
+     */
+    public function test_a_laravel_transaction_holds_the_write_lock_from_the_start(): void
     {
-        $file = "{$this->dir}/{$mode}.sqlite";
+        DB::connection('sqlite_system')->beginTransaction();
 
-        $pdo = new \PDO("sqlite:{$file}");
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $pdo->exec('PRAGMA journal_mode=WAL');
-        $pdo->exec('CREATE TABLE jobs (id INTEGER PRIMARY KEY, reserved_at INT)');
-
-        $insert = $pdo->prepare('INSERT INTO jobs VALUES (?, NULL)');
-
-        for ($i = 1; $i <= $jobs; $i++) {
-            $insert->execute([$i]);
-        }
-
-        $worker = base_path('tests/Fixtures/queue-worker.php');
-        $attempts = (int) ceil($jobs / 2);
-        $procs = [];
-        $pipes = [];
-
-        foreach ([1, 2] as $id) {
-            $procs[$id] = proc_open(
-                [PHP_BINARY, $worker, $file, $mode, (string) $id, (string) $attempts],
-                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-                $pipes[$id],
+        try {
+            $this->assertTrue(
+                $this->writeLockIsHeld(),
+                'sqlite_system opened a transaction without taking the write lock, so two queue workers can still deadlock promoting a read',
             );
+        } finally {
+            DB::connection('sqlite_system')->rollBack();
         }
+    }
 
-        $totals = ['popped' => 0, 'failed' => 0];
+    public function test_the_write_lock_is_released_again_on_rollback(): void
+    {
+        DB::connection('sqlite_system')->beginTransaction();
+        DB::connection('sqlite_system')->rollBack();
 
-        foreach ($procs as $id => $proc) {
-            $output = (string) stream_get_contents($pipes[$id][1]);
-            fclose($pipes[$id][1]);
-            fclose($pipes[$id][2]);
-            proc_close($proc);
-
-            $result = json_decode($output, true);
-            $this->assertIsArray($result, "worker {$id} produced no result: {$output}");
-            $totals['popped'] += $result['popped'];
-            $totals['failed'] += $result['failed'];
-        }
-
-        return $totals;
+        $this->assertFalse($this->writeLockIsHeld(), 'the lock must not outlive the transaction');
     }
 
     /**
-     * Races the mode the queue connection is *actually configured with*, so
-     * setting it back to DEFERRED fails here on real contention rather than
-     * on a string comparison.
+     * Asks a second connection to take the write lock. A short busy_timeout
+     * keeps the failing case quick; the answer is the same either way.
      */
-    public function test_two_concurrent_workers_both_pop_jobs_without_locking_each_other_out(): void
+    private function writeLockIsHeld(): bool
     {
-        $mode = config('database.connections.sqlite_system.transaction_mode');
+        $probe = new \PDO('sqlite:'.$this->file);
+        $probe->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $probe->exec('PRAGMA busy_timeout=250');
 
-        $result = $this->raceTwoWorkers(is_string($mode) ? $mode : 'DEFERRED');
+        try {
+            $probe->exec('BEGIN IMMEDIATE TRANSACTION');
+            $probe->exec('ROLLBACK');
 
-        $this->assertSame(0, $result['failed'], 'no worker should hit "database is locked"');
-        $this->assertSame(20, $result['popped'], 'both workers together should drain the queue');
-    }
-
-    /**
-     * The failure this ticket is about, pinned so the reasoning behind the
-     * setting stays visible: swap the mode back and the contention returns.
-     */
-    public function test_deferred_is_what_locked_the_second_worker_out(): void
-    {
-        $result = $this->raceTwoWorkers('DEFERRED');
-
-        $this->assertGreaterThan(0, $result['failed'], 'DEFERRED is expected to lock a worker out');
-        $this->assertLessThan(20, $result['popped'], 'and to leave part of the queue unclaimed');
+            return false;
+        } catch (\PDOException) {
+            return true;
+        }
     }
 }
