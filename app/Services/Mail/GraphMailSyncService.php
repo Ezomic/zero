@@ -10,7 +10,9 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Support\Payload;
 use App\Support\StoredAttachmentName;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -272,7 +274,7 @@ class GraphMailSyncService
         $data = $response->json();
 
         foreach (Payload::arr($data, 'value') as $message) {
-            if (! is_array($message) || isset($message['@removed'])) {
+            if (! is_array($message)) {
                 continue;
             }
 
@@ -280,6 +282,17 @@ class GraphMailSyncService
 
             foreach ($message as $key => $value) {
                 $keyed[(string) $key] = $value;
+            }
+
+            // Delta reports removals explicitly, and skipping them is why a
+            // message deleted in Outlook or on a phone stayed here forever
+            // (ZERO-103). This is the Graph counterpart of the UID-list
+            // reconciliation ZERO-90 added for IMAP, and cheaper: the
+            // information is already in the response.
+            if (isset($keyed['@removed'])) {
+                $this->markRemoved($account, $localName, $keyed);
+
+                continue;
             }
 
             $this->storeMessage($account, $localName, $graphFolderId, $keyed, broadcastNew: $wasCaughtUp);
@@ -290,6 +303,43 @@ class GraphMailSyncService
         if ($nextLink) {
             $folderRecord->update(['delta_link' => $nextLink]);
         }
+    }
+
+    /**
+     * Marks the local copy of a message delta says is gone from this folder.
+     *
+     * Both removal reasons are treated the same. 'deleted' is self-evident;
+     * 'changed' means it left this folder's result set some other way, which
+     * for our purposes is the same thing, since a message moved elsewhere
+     * arrives as an addition in the destination folder's own delta and rows
+     * here are per (account, folder, uid) anyway.
+     *
+     * A message with an action of ours still queued is left alone, matching
+     * the IMAP reconciliation: until the drain runs, what the server reports
+     * and what the user asked for are legitimately out of step.
+     *
+     * @param  array<string, mixed>  $message
+     */
+    protected function markRemoved(MailAccount $account, string $folderName, array $message): void
+    {
+        $uid = Payload::str($message, 'id');
+
+        if ($uid === '') {
+            return;
+        }
+
+        Email::query()
+            ->where('mail_account_id', $account->id)
+            ->where('folder', $folderName)
+            ->where('uid', $uid)
+            ->where('is_deleted', false)
+            ->whereNotExists(function (QueryBuilder $query) use ($account): void {
+                $query->select(DB::raw('1'))
+                    ->from('pending_mirror_actions')
+                    ->where('pending_mirror_actions.mail_account_id', $account->id)
+                    ->whereColumn('pending_mirror_actions.email_id', 'emails.id');
+            })
+            ->update(['is_deleted' => true]);
     }
 
     /**
