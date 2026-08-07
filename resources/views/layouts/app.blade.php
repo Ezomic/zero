@@ -12,6 +12,10 @@
             document.documentElement.setAttribute('data-theme', stored === 'light' ? 'light' : 'dark');
         })();
     </script>
+    {{-- Read by app.js before it decides whether to open a websocket. A
+         classic script runs ahead of the deferred module below, so the flag
+         is always set by the time the bundle evaluates. --}}
+    <script>window.zeroRealtimeInbox = @json((bool) config('features.realtime_inbox'));</script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
@@ -390,8 +394,13 @@
             <button style="flex-shrink:0; color:var(--text-faint); background:none; border:none; margin-left:6px;" onclick="event.stopPropagation(); document.getElementById('new-email-toast').classList.add('hidden')">✕</button>
         </div>
 
+        @if (config('features.realtime_inbox'))
         <script>
             document.addEventListener('DOMContentLoaded', function () {
+                if (! window.Echo) {
+                    return;
+                }
+
                 window.Echo.private('user.{{ auth()->id() }}')
                     .listen('.new-email', (e) => {
                         // Update badge immediately — don't wait for the next poll.
@@ -407,6 +416,7 @@
                     });
             });
         </script>
+        @endif
     @endauth
 </body>
 </html>
