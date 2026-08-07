@@ -11,6 +11,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
+use App\Support\StoredAttachmentName;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
@@ -305,16 +306,24 @@ class ImapSyncService
                         continue;
                     }
 
-                    $path = "email-attachments/{$account->id}/{$email->id}/".$attachment->getName();
-                    Storage::disk('local')->put($path, $attachment->getContent());
+                    // One unstorable attachment must not cost the message its
+                    // others: the body is already saved by this point, so a
+                    // throw here would leave the message with no attachment
+                    // rows and fetchBody() would never run again (ZERO-106).
+                    try {
+                        $path = "email-attachments/{$account->id}/{$email->id}/".StoredAttachmentName::for($attachment->getName());
+                        Storage::disk('local')->put($path, $attachment->getContent());
 
-                    EmailAttachment::create([
-                        'email_id' => $email->id,
-                        'filename' => $attachment->getName(),
-                        'mime_type' => $attachment->getMimeType(),
-                        'size_bytes' => $attachment->getSize(),
-                        'storage_path' => $path,
-                    ]);
+                        EmailAttachment::create([
+                            'email_id' => $email->id,
+                            'filename' => $attachment->getName(),
+                            'mime_type' => $attachment->getMimeType(),
+                            'size_bytes' => $attachment->getSize(),
+                            'storage_path' => $path,
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning("Could not store attachment on email {$email->id}: ".$e->getMessage());
+                    }
                 }
             }
         } finally {

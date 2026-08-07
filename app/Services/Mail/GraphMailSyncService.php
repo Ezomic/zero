@@ -9,8 +9,10 @@ use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Support\Payload;
+use App\Support\StoredAttachmentName;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -428,16 +430,23 @@ class GraphMailSyncService
             }
 
             $name = Payload::str($attachment, 'name');
-            $path = "email-attachments/{$account->id}/{$email->id}/".$name;
-            Storage::disk('local')->put($path, base64_decode(Payload::str($attachment, 'contentBytes')));
 
-            EmailAttachment::create([
-                'email_id' => $email->id,
-                'filename' => $name,
-                'mime_type' => Payload::nullableStr($attachment, 'contentType') ?? 'application/octet-stream',
-                'size_bytes' => Payload::int($attachment, 'size'),
-                'storage_path' => $path,
-            ]);
+            // See ZERO-106: the sender picks this name, and one unstorable
+            // attachment must not cost the message its others.
+            try {
+                $path = "email-attachments/{$account->id}/{$email->id}/".StoredAttachmentName::for($name);
+                Storage::disk('local')->put($path, base64_decode(Payload::str($attachment, 'contentBytes')));
+
+                EmailAttachment::create([
+                    'email_id' => $email->id,
+                    'filename' => $name,
+                    'mime_type' => Payload::nullableStr($attachment, 'contentType') ?? 'application/octet-stream',
+                    'size_bytes' => Payload::int($attachment, 'size'),
+                    'storage_path' => $path,
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning("Could not store attachment on email {$email->id}: ".$e->getMessage());
+            }
         }
     }
 }
