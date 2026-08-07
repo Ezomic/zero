@@ -57,7 +57,7 @@ class ComposeController extends Controller
     public function store(Request $request, MailSenderService $sender): RedirectResponse
     {
         $validated = $request->validate([
-            'mail_account_id' => ['required', 'exists:mail_accounts,id'],
+            'mail_account_id' => ['required', $this->ownedAccountRule()],
             'to' => ['required', 'string'], // comma-separated
             'cc' => ['nullable', 'string'],
             'subject' => ['required', 'string', 'max:255'],

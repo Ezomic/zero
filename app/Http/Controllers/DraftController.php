@@ -29,7 +29,10 @@ class DraftController extends Controller
     {
         $validated = $request->validate([
             'draft_id' => ['nullable', 'integer'],
-            'mail_account_id' => ['nullable', 'exists:mail_accounts,id'],
+            // Scoped to the caller's own accounts: a bare exists rule only
+            // proves the row is real, so any id would be accepted and then
+            // rendered back as the draft's selected sender (ZERO-104).
+            'mail_account_id' => ['nullable', $this->ownedAccountRule()],
             'to' => ['nullable', 'string'],
             'cc' => ['nullable', 'string'],
             'subject' => ['nullable', 'string', 'max:255'],
