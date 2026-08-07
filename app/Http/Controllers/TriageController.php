@@ -137,8 +137,30 @@ class TriageController extends Controller
             // the real move reports back the uid the message
             // actually got in its destination.
             $sourceUid = $message->uid;
-            $message->update(['folder' => $folder, 'uid' => null, 'is_read' => true]);
+
+            // Triage marks the conversation read as it files it, and that has
+            // to reach the server like every other read. Queued before the
+            // move on purpose: applyFolderActions() applies flags ahead of
+            // moves within a folder, and both IMAP MOVE and Graph's move
+            // carry flags with the message, so \Seen set here lands on the
+            // copy in the destination.
+            //
+            // Without it the message stayed unread everywhere else, and once
+            // ZERO-90's reconciliation ran against the destination folder the
+            // server still reported it unseen and flipped it back here too
+            // (ZERO-101).
+            if (! $message->is_read) {
+                $this->queueMirror->handle($message, 'mark_read', $sourceUid);
+            }
+
+            // Both queued before the row moves. QueueMirrorAction records
+            // `remote_folder_path ?: folder`, so queueing after the update
+            // stamps the *destination* as the action's source folder whenever
+            // remote_folder_path is null, and the drain then goes looking for
+            // the uid in the folder the message has not reached yet.
             $this->queueMirror->handle($message, 'move:'.$folder, $sourceUid);
+
+            $message->update(['folder' => $folder, 'uid' => null, 'is_read' => true]);
         }
 
         return redirect()->route('triage.index', ['account' => $email->mail_account_id]);

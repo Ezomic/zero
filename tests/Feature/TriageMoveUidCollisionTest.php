@@ -57,12 +57,60 @@ class TriageMoveUidCollisionTest extends TestCase
         $this->assertSame('Bugsnag', $inboxEmail->folder);
         $this->assertNull($inboxEmail->uid);
 
-        // The queued action has to carry the uid the message had in INBOX,
+        // Every queued action has to carry the uid the message had in INBOX,
         // not the one it will get in Bugsnag, or the drain would address the
-        // unrelated message already filed there.
-        $queued = PendingMirrorAction::where('email_id', $inboxEmail->id)->sole();
+        // unrelated message already filed there. That goes for the read flag
+        // triage queues alongside the move (ZERO-101) as much as the move.
+        $queued = PendingMirrorAction::where('email_id', $inboxEmail->id)->get();
+
+        $this->assertEqualsCanonicalizing(
+            ['mark_read', 'move:Bugsnag'],
+            $queued->pluck('action')->all(),
+        );
+
+        foreach ($queued as $action) {
+            $this->assertSame('29', $action->uid, "{$action->action} must address the INBOX copy");
+            $this->assertSame('INBOX', $action->remote_folder_path);
+        }
+
+        Queue::assertPushed(DrainMirrorActionsJob::class);
+    }
+
+    /**
+     * The inbox move had the same shape: the action was queued after the row
+     * had already been pointed at the destination, so with a null
+     * remote_folder_path it recorded the destination as its own source.
+     */
+    public function test_the_inbox_move_also_records_the_folder_the_message_is_leaving(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+
+        MailFolder::create([
+            'mail_account_id' => $account->id,
+            'local_name' => 'Bugsnag',
+            'remote_path' => 'Bugsnag',
+        ]);
+
+        $email = Email::create([
+            'mail_account_id' => $account->id,
+            'thread_id' => 'inbox-thread',
+            'folder' => 'INBOX',
+            'uid' => '29',
+            'subject' => 'Your Bugsnag plan has been changed',
+        ]);
+
+        Queue::fake();
+
+        $this->actingAs($user)
+            ->post(route('inbox.move', $email), ['folder' => 'Bugsnag'])
+            ->assertRedirect();
+
+        $queued = PendingMirrorAction::where('email_id', $email->id)->sole();
+
         $this->assertSame('move:Bugsnag', $queued->action);
         $this->assertSame('29', $queued->uid);
+        $this->assertSame('INBOX', $queued->remote_folder_path);
 
         Queue::assertPushed(DrainMirrorActionsJob::class);
     }
