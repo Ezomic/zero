@@ -213,6 +213,12 @@ re-running for an already-provisioned account is a no-op.
 
 ### Calendar invitations
 
+The whole calendar feature is gated on `CALENDAR_API_TOKEN` (see
+`config/services.php`). With it unset, the "Create event" button and the
+invitation block both disappear and nothing is logged, so an environment
+missing the key looks like an app that never had the feature. Both keys are in
+`.env.example`.
+
 A message carrying a `text/calendar` part or a `.ics` attachment gets an
 invitation block in the reading pane, with a one-click "Add to calendar" that
 posts the parsed times to the same Chronos route as the manual modal (so it is
