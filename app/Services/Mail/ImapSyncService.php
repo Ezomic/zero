@@ -1083,7 +1083,7 @@ class ImapSyncService
                 sentAt: $email->sent_at?->toISOString() ?? now()->toISOString() ?? '',
             ));
 
-            if (config('features.macos_notifications')) {
+            if ($this->macOsNotificationsEnabled()) {
                 $this->notifyMacOs($fromName ?? $fromAddress ?? 'New message', $subject);
             }
         }
@@ -1182,6 +1182,24 @@ class ImapSyncService
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * The flag alone is not enough to gate this. It defaults to on and
+     * production's .env does not set it, so every new message on the Linux
+     * droplet forked a shell to run an osascript that does not exist there,
+     * in the middle of the sync path (ZERO-108). The platform check is the
+     * real precondition; the flag is for turning it off on a Mac.
+     */
+    protected function macOsNotificationsEnabled(): bool
+    {
+        return $this->osFamily() === 'Darwin' && (bool) config('features.macos_notifications');
+    }
+
+    /** Seam so the platform branch stays testable from either OS. */
+    protected function osFamily(): string
+    {
+        return PHP_OS_FAMILY;
     }
 
     protected function notifyMacOs(string $from, string $subject): void

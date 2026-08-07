@@ -36,7 +36,11 @@ return [
     // Disable if Reverb is not running (falls back to API polling every 30s).
     'realtime_inbox' => (bool) env('FEATURE_REALTIME_INBOX', true),
 
-    // macOS system notifications on new mail (osascript). No-op on Linux/Windows.
+    // macOS system notifications on new mail (osascript). Ignored entirely off
+    // Darwin: ImapSyncService checks the platform before the flag, because
+    // this defaulting to on is what had production forking a doomed osascript
+    // per message (ZERO-108). Set it to false to silence notifications on a
+    // Mac; there is nothing to turn off anywhere else.
     'macos_notifications' => (bool) env('FEATURE_MACOS_NOTIFICATIONS', true),
 
     // Draft auto-save in the compose view.
