@@ -19,3 +19,11 @@ Schedule::command('mail:sync')->everyFiveMinutes()->withoutOverlapping();
 // dropped as a duplicate or killed mid-run, so a pending action can never sit
 // indefinitely waiting for the next user click to nudge it.
 Schedule::command('mail:drain-mirrors')->everyFiveMinutes()->withoutOverlapping();
+
+// Fills in bodies for messages nobody has opened, so search can match them
+// (ZERO-102). Deliberately off the sync path and on its own budget: a body
+// costs about 0.58s against a real Gmail account, so fetching them during a
+// sync would add half a minute to a folder with 50 new messages. Runs on the
+// quarter hour rather than every five minutes to stay out of the way of the
+// two above, and stops itself after 60s whether or not it finished.
+Schedule::command('mail:backfill-bodies')->everyFifteenMinutes()->withoutOverlapping();

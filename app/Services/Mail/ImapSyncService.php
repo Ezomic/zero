@@ -11,6 +11,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
+use App\Support\SearchableBody;
 use App\Support\StoredAttachmentName;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -298,9 +299,15 @@ class ImapSyncService
 
             $message = $folder->messages()->fetchBody(true)->getMessageByUid((int) $email->uid);
 
+            $html = $message->getHTMLBody() ?: null;
+
             $email->update([
-                'body_html' => $message->getHTMLBody() ?: null,
-                'body_text' => $message->getTextBody() ?: null,
+                'body_html' => $html,
+                // Falls back to a stripped copy of the HTML when the message
+                // carries no text part, since the FTS triggers only ever read
+                // body_text and an HTML-only message was otherwise absent
+                // from search entirely (ZERO-102).
+                'body_text' => SearchableBody::forStorage($message->getTextBody() ?: null, $html),
                 'has_attachments' => $message->hasAttachments(),
             ]);
 

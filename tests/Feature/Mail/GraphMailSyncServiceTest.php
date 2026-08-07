@@ -292,7 +292,12 @@ class GraphMailSyncServiceTest extends TestCase
         $this->service->fetchBody($email);
 
         $this->assertSame('<p>Hello</p>', $email->fresh()->body_html);
-        $this->assertNull($email->fresh()->body_text);
+
+        // body_text used to be left null here, which kept HTML-only messages
+        // out of emails_fts entirely. It now carries a stripped copy purely
+        // so the index has something to match; the reading pane still prefers
+        // body_html (ZERO-102).
+        $this->assertSame('Hello', $email->fresh()->body_text);
     }
 
     public function test_fetch_body_downloads_attachments(): void

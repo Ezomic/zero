@@ -9,6 +9,7 @@ use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Support\Payload;
+use App\Support\SearchableBody;
 use App\Support\StoredAttachmentName;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
@@ -126,9 +127,14 @@ class GraphMailSyncService
         $content = Payload::nullableStr($body, 'content');
         $hasAttachments = Payload::bool($data, 'hasAttachments');
 
+        $html = $isHtml ? $content : null;
+
         $email->update([
-            'body_html' => $isHtml ? $content : null,
-            'body_text' => $isHtml ? null : $content,
+            'body_html' => $html,
+            // An HTML body stored a null body_text, and the FTS triggers only
+            // ever read body_text, so those messages were absent from search
+            // entirely (ZERO-102).
+            'body_text' => SearchableBody::forStorage($isHtml ? null : $content, $html),
             'has_attachments' => $hasAttachments,
         ]);
 
