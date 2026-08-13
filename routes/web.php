@@ -67,6 +67,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');
 
+    Route::get('/attachments', [EmailAttachmentController::class, 'index'])->name('attachments.index');
     Route::get('/attachments/{attachment}', [EmailAttachmentController::class, 'show'])->name('attachments.download');
 
     Route::post('/emails/{email}/calendar-event', [CalendarEventController::class, 'store'])->name('inbox.calendarEvent');

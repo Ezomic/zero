@@ -76,6 +76,9 @@
         <a href="{{ route('inbox.index', ['archived' => 1]) }}" class="nav-item {{ $isArchived ? 'active' : '' }}">
             <svg class="ic"><use href="#i-archive"/></svg>Archived
         </a>
+        <a href="{{ route('attachments.index') }}" class="nav-item {{ request()->routeIs('attachments.index') ? 'active' : '' }}">
+            <svg class="ic"><use href="#i-clip"/></svg>Attachments
+        </a>
     </div>
 
     @if ($savedSearches->isNotEmpty())
