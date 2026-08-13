@@ -12,6 +12,7 @@ use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SenderController;
 use App\Http\Controllers\TriageController;
+use App\Http\Controllers\UnsubscribeController;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Http\Request;
@@ -53,6 +54,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/emails/bulk', [InboxController::class, 'bulk'])->name('inbox.bulk');
     Route::get('/api/unread-count', [InboxController::class, 'unreadCount'])->name('inbox.unreadCount');
     Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
+
+    Route::post('/emails/{email}/unsubscribe', [UnsubscribeController::class, 'store'])->name('inbox.unsubscribe');
 
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');

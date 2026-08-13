@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\UnsubscribeOptions;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -33,6 +34,8 @@ class Email extends Model
         'thread_id',
         'in_reply_to',
         'references_header',
+        'list_unsubscribe',
+        'list_unsubscribe_post',
         'folder',
         'remote_folder_path',
         'uid',
@@ -88,6 +91,16 @@ class Email extends Model
     public function attachments(): HasMany
     {
         return $this->hasMany(EmailAttachment::class);
+    }
+
+    /**
+     * What this message offers for getting off its mailing list, if anything
+     * (ZERO-115). Parsed on read: the header is stored verbatim so a change
+     * of mind about how to interpret it does not need a resync.
+     */
+    public function unsubscribeOptions(): ?UnsubscribeOptions
+    {
+        return UnsubscribeOptions::parse($this->list_unsubscribe, $this->list_unsubscribe_post);
     }
 
     /** @return HasMany<CalendarEvent, $this> */

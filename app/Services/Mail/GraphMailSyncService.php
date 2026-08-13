@@ -116,8 +116,14 @@ class GraphMailSyncService
         $account = $email->requireMailAccount();
         $accessToken = $this->tokenRefresher->freshAccessToken($account);
 
+        // internetMessageHeaders rides along on a request already being made.
+        // It is deliberately *not* in MESSAGE_SELECT: delta returns a page of
+        // messages at a time, and the header block is large enough that
+        // adding it there would inflate every page for one field, whereas
+        // this runs only for messages actually opened or backfilled
+        // (ZERO-115).
         $response = Http::withToken($accessToken)
-            ->get(self::BASE_URL."/me/messages/{$email->uid}", ['$select' => 'body,hasAttachments']);
+            ->get(self::BASE_URL."/me/messages/{$email->uid}", ['$select' => 'body,hasAttachments,internetMessageHeaders']);
 
         if ($response->failed()) {
             throw new RuntimeException('Graph fetchBody failed: '.$response->body());
@@ -138,11 +144,38 @@ class GraphMailSyncService
             // entirely (ZERO-102).
             'body_text' => SearchableBody::forStorage($isHtml ? null : $content, $html),
             'has_attachments' => $hasAttachments,
+            'list_unsubscribe' => $this->graphHeader($data, 'list-unsubscribe'),
+            'list_unsubscribe_post' => $this->graphHeader($data, 'list-unsubscribe-post'),
         ]);
 
         if ($hasAttachments && $email->attachments()->count() === 0) {
             $this->storeAttachments($account, $email, $accessToken);
         }
+    }
+
+    /**
+     * Reads one header out of Graph's internetMessageHeaders list.
+     *
+     * Graph returns an array of {name, value} pairs and does not promise a
+     * case for the names, so the match is case-insensitive (ZERO-115).
+     */
+    protected function graphHeader(mixed $data, string $name): ?string
+    {
+        $headers = Payload::arr($data, 'internetMessageHeaders');
+
+        foreach ($headers as $header) {
+            if (! is_array($header) || strtolower(Payload::str($header, 'name')) !== $name) {
+                continue;
+            }
+
+            $value = trim(Payload::str($header, 'value'));
+
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     public function applyAction(Email $email, string $action, ?string $sourceUid = null): void
