@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Event;
 use Mockery;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
+use Webklex\PHPIMAP\Config;
 use Webklex\PHPIMAP\Folder;
+use Webklex\PHPIMAP\Header;
 use Webklex\PHPIMAP\Message;
 use Webklex\PHPIMAP\Support\FlagCollection;
 
@@ -61,9 +63,21 @@ class ImapSyncServiceStoreMessageTest extends TestCase
         Mockery::close();
     }
 
-    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null, bool $hasDate = true): Message
+    /**
+     * @param  array<string, string>  $headers
+     */
+    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null, bool $hasDate = true, array $headers = []): Message
     {
         $message = Mockery::mock(Message::class);
+        // A real Header parsed from raw text rather than a stub, so header
+        // name normalisation is exercised the way the server sends it.
+        $raw = 'Date: Thu, 01 Jan 2026 00:00:00 +0000'."\r\n";
+
+        foreach ($headers as $name => $value) {
+            $raw .= "{$name}: {$value}\r\n";
+        }
+
+        $message->shouldReceive('getHeader')->andReturn(new Header($raw, Config::make()));
         $message->shouldReceive('getUid')->andReturn($uid);
         $message->shouldReceive('getFlags')->andReturn(new FlagCollection($isRead ? ['Seen' => 'Seen'] : []));
         $message->shouldReceive('getMessageId')->andReturn($messageId === null ? null : new class($messageId)
@@ -114,6 +128,35 @@ class ImapSyncServiceStoreMessageTest extends TestCase
             'subject' => 'Test subject',
             'from_address' => 'sender@example.com',
             'is_read' => false,
+        ]);
+    }
+
+    public function test_it_stores_the_list_unsubscribe_headers(): void
+    {
+        $message = $this->makeMessage(uid: 777, isRead: false, headers: [
+            'List-Unsubscribe' => '<https://example.com/unsub>, <mailto:leave@example.com>',
+            'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
+        ]);
+
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: false);
+
+        $this->assertDatabaseHas('emails', [
+            'uid' => '777',
+            'list_unsubscribe' => '<https://example.com/unsub>, <mailto:leave@example.com>',
+            'list_unsubscribe_post' => 'List-Unsubscribe=One-Click',
+        ]);
+    }
+
+    public function test_a_message_without_the_headers_stores_nulls(): void
+    {
+        $message = $this->makeMessage(uid: 778, isRead: false);
+
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: false);
+
+        $this->assertDatabaseHas('emails', [
+            'uid' => '778',
+            'list_unsubscribe' => null,
+            'list_unsubscribe_post' => null,
         ]);
     }
 

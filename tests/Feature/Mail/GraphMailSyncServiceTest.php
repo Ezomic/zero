@@ -326,6 +326,48 @@ class GraphMailSyncServiceTest extends TestCase
         $this->assertDatabaseHas('email_attachments', ['email_id' => $email->id, 'filename' => 'file.txt']);
     }
 
+    public function test_fetch_body_stores_the_list_unsubscribe_headers(): void
+    {
+        $email = Email::factory()->create(['mail_account_id' => $this->account->id, 'uid' => 'msg-32', 'body_text' => null]);
+
+        Http::fake([
+            'https://graph.microsoft.com/v1.0/me/messages/msg-32*' => Http::response([
+                'body' => ['contentType' => 'text', 'content' => 'digest'],
+                'hasAttachments' => false,
+                'internetMessageHeaders' => [
+                    ['name' => 'Received', 'value' => 'by mx.example.com'],
+                    ['name' => 'List-Unsubscribe', 'value' => '<https://example.com/unsub>'],
+                    ['name' => 'List-Unsubscribe-Post', 'value' => 'List-Unsubscribe=One-Click'],
+                ],
+            ]),
+        ]);
+
+        $this->service->fetchBody($email);
+
+        $this->assertSame('<https://example.com/unsub>', $email->fresh()->list_unsubscribe);
+        $this->assertSame('List-Unsubscribe=One-Click', $email->fresh()->list_unsubscribe_post);
+
+        // Graph does not promise a case for header names.
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'internetMessageHeaders'));
+    }
+
+    public function test_fetch_body_without_the_headers_leaves_them_null(): void
+    {
+        $email = Email::factory()->create(['mail_account_id' => $this->account->id, 'uid' => 'msg-33', 'body_text' => null]);
+
+        Http::fake([
+            'https://graph.microsoft.com/v1.0/me/messages/msg-33*' => Http::response([
+                'body' => ['contentType' => 'text', 'content' => 'plain'],
+                'hasAttachments' => false,
+            ]),
+        ]);
+
+        $this->service->fetchBody($email);
+
+        $this->assertNull($email->fresh()->list_unsubscribe);
+        $this->assertNull($email->fresh()->list_unsubscribe_post);
+    }
+
     // --- applyAction() -------------------------------------------------------
 
     public function test_apply_action_mark_read_patches_is_read_true(): void

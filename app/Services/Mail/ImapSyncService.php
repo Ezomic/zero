@@ -323,6 +323,12 @@ class ImapSyncService
                 // from search entirely (ZERO-102).
                 'body_text' => SearchableBody::forStorage($message->getTextBody() ?: null, $html),
                 'has_attachments' => $message->hasAttachments(),
+                // Also captured at insert, but everything already stored
+                // predates those columns. Reading a message is the one moment
+                // its headers are in hand again, so the backlog fills in as it
+                // is opened rather than needing a resync (ZERO-115).
+                'list_unsubscribe' => $this->headerValue($message, 'list_unsubscribe'),
+                'list_unsubscribe_post' => $this->headerValue($message, 'list_unsubscribe_post'),
             ]);
 
             if ($message->hasAttachments() && $email->attachments()->count() === 0) {
@@ -1143,6 +1149,8 @@ class ImapSyncService
             'thread_id' => $threadId,
             'in_reply_to' => $inReplyTo,
             'references_header' => $references ? implode(' ', $references) : null,
+            'list_unsubscribe' => $this->headerValue($message, 'list_unsubscribe'),
+            'list_unsubscribe_post' => $this->headerValue($message, 'list_unsubscribe_post'),
             'folder' => $folderName,
             'remote_folder_path' => $folder->full_name ?? $folder->path,
             'uid' => $uid,
@@ -1200,6 +1208,30 @@ class ImapSyncService
         }
 
         return $date;
+    }
+
+    /**
+     * Reads an arbitrary header off the message webklex already fetched.
+     *
+     * Header names arrive snake_cased in its attribute bag, and a message
+     * without the header simply has no attribute, so this stays defensive
+     * rather than assuming shape (ZERO-115).
+     */
+    protected function headerValue(Message $message, string $name): ?string
+    {
+        try {
+            $header = $message->getHeader();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($header === null) {
+            return null;
+        }
+
+        $value = trim((string) $header->get($name));
+
+        return $value === '' ? null : $value;
     }
 
     /**

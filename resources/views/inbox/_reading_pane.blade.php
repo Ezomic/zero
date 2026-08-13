@@ -74,6 +74,43 @@
     </div>
 </div>
 
+@php
+    // The newest message that offers a way off the list. A thread is usually
+    // one newsletter, but a reply chain would otherwise hide the header behind
+    // whichever message happens to anchor the thread (ZERO-115).
+    $unsubscribeFrom = collect($messages)->reverse()->first(fn ($m) => $m->unsubscribeOptions() !== null);
+    $unsubscribe = $unsubscribeFrom?->unsubscribeOptions();
+@endphp
+@if ($unsubscribe)
+    <div class="unsub">
+        <svg class="ic-sm"><use href="#i-mute"/></svg>
+        <span>This is a mailing list.</span>
+        {{-- oneClick, not isPostable(): the latter resolves the host, and a
+             DNS lookup per render is not something a reading pane should do.
+             The controller runs the real check when the button is pressed. --}}
+        @if ($unsubscribe->oneClick)
+            <form method="POST" action="{{ route('inbox.unsubscribe', $unsubscribeFrom) }}">
+                @csrf
+                <button class="btn sm ghost">Unsubscribe</button>
+            </form>
+        @endif
+        @if ($unsubscribe->url)
+            {{-- Kept alongside the button, not just as its replacement: when
+                 the POST is refused this is the only way left. --}}
+            <a class="btn sm ghost" href="{{ $unsubscribe->url }}" target="_blank" rel="noopener noreferrer nofollow">
+                {{ $unsubscribe->oneClick ? 'Open their page' : 'Unsubscribe on their site' }}
+            </a>
+        @elseif ($unsubscribe->mailto)
+            <a class="btn sm ghost" href="{{ $unsubscribe->mailto }}">Unsubscribe by email</a>
+        @endif
+        @if ($unsubscribeFrom->from_address)
+            <a class="unsub-rest" href="{{ route('sender.show', ['address' => $unsubscribeFrom->from_address]) }}">
+                Clean up the rest
+            </a>
+        @endif
+    </div>
+@endif
+
 @if (count($availableFolders) > 1)
     <div style="padding:14px 22px 0;">
         <form method="POST" action="{{ route('inbox.move', $email) }}" style="display:flex; gap:8px;">
