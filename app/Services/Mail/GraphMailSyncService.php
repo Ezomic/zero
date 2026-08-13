@@ -66,7 +66,7 @@ class GraphMailSyncService
      *  checkpoints quickly, same rationale as ImapSyncService::FULL_SYNC_CHUNK_SIZE. */
     protected const PAGE_SIZE = 50;
 
-    protected const MESSAGE_SELECT = 'subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,conversationId,internetMessageId,hasAttachments';
+    protected const MESSAGE_SELECT = 'subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,flag,conversationId,internetMessageId,hasAttachments';
 
     public function __construct(
         protected OAuthTokenRefresher $tokenRefresher,
@@ -162,6 +162,9 @@ class GraphMailSyncService
         $response = match ($action) {
             'mark_read' => Http::withToken($accessToken)->patch(self::BASE_URL."/me/messages/{$messageId}", ['isRead' => true]),
             'mark_unread' => Http::withToken($accessToken)->patch(self::BASE_URL."/me/messages/{$messageId}", ['isRead' => false]),
+            // Graph models a star as the followup flag rather than a boolean.
+            'star' => Http::withToken($accessToken)->patch(self::BASE_URL."/me/messages/{$messageId}", ['flag' => ['flagStatus' => 'flagged']]),
+            'unstar' => Http::withToken($accessToken)->patch(self::BASE_URL."/me/messages/{$messageId}", ['flag' => ['flagStatus' => 'notFlagged']]),
             'delete' => Http::withToken($accessToken)->delete(self::BASE_URL."/me/messages/{$messageId}"),
             default => null,
         };
@@ -353,6 +356,17 @@ class GraphMailSyncService
     }
 
     /**
+     * Graph models a star as a followup flag rather than a boolean, and
+     * reports 'notFlagged' or 'complete' for anything that is not one.
+     *
+     * @param  array<string, mixed>  $message
+     */
+    protected function isFlagged(array $message): bool
+    {
+        return Payload::str($message, 'flag', 'flagStatus') === 'flagged';
+    }
+
+    /**
      * @param  array<string, mixed>  $message
      */
     protected function storeMessage(MailAccount $account, string $folderName, string $graphFolderId, array $message, bool $broadcastNew): void
@@ -366,9 +380,10 @@ class GraphMailSyncService
 
         if ($existing) {
             $isRead = Payload::bool($message, 'isRead');
+            $isStarred = $this->isFlagged($message);
 
-            if ($existing->is_read !== $isRead) {
-                $existing->update(['is_read' => $isRead]);
+            if ($existing->is_read !== $isRead || $existing->is_starred !== $isStarred) {
+                $existing->update(['is_read' => $isRead, 'is_starred' => $isStarred]);
             }
 
             return;
@@ -393,6 +408,7 @@ class GraphMailSyncService
         $receivedAt = Payload::nullableStr($message, 'receivedDateTime');
         $sentAt = $receivedAt !== null ? Carbon::parse($receivedAt) : null;
         $isRead = Payload::bool($message, 'isRead');
+        $isStarred = $this->isFlagged($message);
 
         $email = Email::create([
             'mail_account_id' => $account->id,
@@ -410,6 +426,7 @@ class GraphMailSyncService
             'body_html' => null,
             'body_text' => null,
             'is_read' => $isRead,
+            'is_starred' => $isStarred,
             'has_attachments' => $message['hasAttachments'] ?? false,
             'sent_at' => $sentAt,
         ]);

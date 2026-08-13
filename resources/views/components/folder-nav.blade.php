@@ -29,6 +29,15 @@
     $isSent = request()->routeIs('inbox.index') && request()->get('folder') === 'SENT' && ! request()->filled('account');
     $isTrash = request()->routeIs('inbox.index') && request()->get('folder') === 'TRASH' && ! request()->filled('account');
     $isArchived = request()->routeIs('inbox.index') && request()->boolean('archived');
+    $isStarred = request()->routeIs('inbox.index') && request()->boolean('starred');
+
+    // One indexed count for the whole rail, in the same spirit as the grouped
+    // unread query above: no per-account or per-view query (ZERO-113).
+    $starredCount = Email::query()
+        ->whereIn('mail_account_id', $navAccounts->pluck('id'))
+        ->where('is_starred', true)
+        ->where('is_deleted', false)
+        ->count();
 @endphp
 
 <div class="rail-scroll">
@@ -47,6 +56,10 @@
         </a>
         <a href="{{ route('inbox.index', ['folder' => 'TRASH']) }}" class="nav-item {{ $isTrash ? 'active' : '' }}">
             <svg class="ic"><use href="#i-trash"/></svg>Trash
+        </a>
+        <a href="{{ route('inbox.index', ['starred' => 1]) }}" class="nav-item {{ $isStarred ? 'active' : '' }}">
+            <svg class="ic"><use href="#i-star"/></svg>Starred
+            @if ($starredCount > 0)<span class="count">{{ $starredCount > 99 ? '99+' : $starredCount }}</span>@endif
         </a>
         <a href="{{ route('inbox.index', ['archived' => 1]) }}" class="nav-item {{ $isArchived ? 'active' : '' }}">
             <svg class="ic"><use href="#i-archive"/></svg>Archived

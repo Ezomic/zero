@@ -117,7 +117,7 @@ class ImapSyncServiceSyncFolderTest extends TestCase
      * @param  array<int, Message>  $messagesByUid
      * @param  array<int>  $unseenUids
      */
-    private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid, array $unseenUids = []): void
+    private function mockIncrementalFetch(Folder $folder, array $allUids, array $messagesByUid, array $unseenUids = [], array $flaggedUids = []): void
     {
         $response = Mockery::mock(Response::class);
         $response->shouldReceive('validatedData')->andReturn($allUids);
@@ -128,6 +128,10 @@ class ImapSyncServiceSyncFolderTest extends TestCase
         $connection = Mockery::mock(ProtocolInterface::class);
         $connection->shouldReceive('getUid')->andReturn($response);
         $connection->shouldReceive('search')->with(['UNSEEN'])->andReturn($unseenResponse);
+
+        $flaggedResponse = Mockery::mock(Response::class);
+        $flaggedResponse->shouldReceive('validatedData')->andReturn($flaggedUids);
+        $connection->shouldReceive('search')->with(['FLAGGED'])->andReturn($flaggedResponse);
 
         $client = Mockery::mock(Client::class);
         $client->shouldReceive('getConnection')->andReturn($connection);
@@ -650,5 +654,54 @@ class ImapSyncServiceSyncFolderTest extends TestCase
 
         $this->assertFalse($email->fresh()->is_deleted);
         $this->assertFalse($email->fresh()->is_read);
+    }
+
+    public function test_a_star_set_on_another_device_is_reconciled_in(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: [], flaggedUids: [60]);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertTrue($email->fresh()->is_starred);
+    }
+
+    public function test_a_star_removed_on_another_device_is_reconciled_out(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: true);
+        $email->update(['is_starred' => true]);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: [], flaggedUids: []);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_starred);
+    }
+
+    /**
+     * The star reconciliation must not disturb read state, and vice versa:
+     * they are two independent searches over the same rows.
+     */
+    public function test_reconciling_the_star_leaves_read_state_alone(): void
+    {
+        $folderRecord = $this->incrementalFolderRecord();
+        $email = $this->storedEmail(uid: 60, isRead: false);
+
+        $folder = $this->makeFolder();
+        $folder->shouldReceive('examine')->andReturn(['uidvalidity' => 42]);
+        // Still unread on the server, but now flagged.
+        $this->mockIncrementalFetch($folder, [60], [], unseenUids: [60], flaggedUids: [60]);
+
+        $this->service->callSyncFolder($this->account, $folder, $folderRecord, 'INBOX', 5000);
+
+        $this->assertFalse($email->fresh()->is_read);
+        $this->assertTrue($email->fresh()->is_starred);
     }
 }

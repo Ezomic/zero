@@ -5,6 +5,14 @@
 @endphp
 <div class="email-row trow {{ $email->is_read ? '' : 'unread' }} {{ $email->id === ($openEmailId ?? null) ? 'selected' : '' }}" data-email-id="{{ $email->id }}">
     <input type="checkbox" name="ids[]" value="{{ $email->id }}" class="row-checkbox" form="bulk-form">
+    <form method="POST" action="{{ route('inbox.toggleStar', $email) }}" class="star-form" data-action="star">
+        @csrf
+        <button type="submit" class="star-toggle {{ $email->is_starred ? 'on' : '' }}"
+                aria-pressed="{{ $email->is_starred ? 'true' : 'false' }}"
+                title="{{ $email->is_starred ? 'Remove star' : 'Star this message' }}">
+            <svg class="ic-sm"><use href="#i-star"/></svg>
+        </button>
+    </form>
     <div class="avatar" style="background:{{ $email->mailAccount->color }}">{{ $initials }}</div>
     <a href="{{ route('inbox.show', $email) }}" class="trow-main">
         <div class="trow-top">
