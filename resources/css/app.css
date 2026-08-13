@@ -295,6 +295,21 @@ svg{ display:block; flex-shrink:0; }
 .unsub form{ display:inline; }
 .unsub-rest{ color:var(--text-faint); text-decoration:underline; }
 .unsub-rest:hover{ color:var(--text); }
+.saved-label{ display:flex; align-items:center; justify-content:space-between; }
+.saved-label a{ font-size:11px; font-weight:600; color:var(--text-faint); text-transform:none; letter-spacing:0; }
+.saved-label a:hover{ color:var(--text); }
+.count.saved-gone{ background:var(--danger-soft); color:var(--danger); }
+.save-search{ display:flex; align-items:center; gap:6px; }
+.save-search input[type=text]{ width:190px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-size:12.5px; }
+.saved-manage{ display:flex; flex-direction:column; gap:10px; }
+.saved-row{ display:flex; align-items:center; gap:12px; padding:12px 14px; }
+.saved-row-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.saved-rename{ display:flex; gap:6px; }
+.saved-rename input{ flex:1; min-width:0; padding:6px 9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-size:13px; font-weight:600; }
+.saved-meta{ display:flex; flex-wrap:wrap; gap:10px; font-size:12px; color:var(--text-faint); }
+.saved-meta a{ color:var(--text-dim); }
+.saved-row-actions{ display:flex; align-items:center; gap:4px; }
+.saved-row-actions button[disabled]{ opacity:.35; cursor:default; }
 .chip{ display:inline-flex; align-items:center; gap:6px; background:var(--bg-2); border:1px solid var(--border); padding:4px 9px 4px 5px; border-radius:20px; font-size:12px; color:var(--text-dim); }
 .chip .dot{ width:16px; height:16px; border-radius:50%; color:#fff; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; }
 .rp-actions{ display:flex; gap:6px; flex-shrink:0; }

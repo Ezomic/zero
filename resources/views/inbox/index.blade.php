@@ -11,6 +11,25 @@
                 @if ($selectedAccountId)<input type="hidden" name="account" value="{{ $selectedAccountId }}">@endif
                 @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
             </form>
+            {{-- Only offered once there is a query to save, since the scope on
+                 its own is already a folder in the rail (ZERO-120). --}}
+            @if (request()->filled('q'))
+                <form method="POST" action="{{ route('savedSearches.store') }}" class="save-search"
+                      x-data="{ naming: false }" x-on:submit="if (! naming) { naming = true; $nextTick(() => $refs.name.focus()); return false }">
+                    @csrf
+                    <input type="hidden" name="query" value="{{ request('q') }}">
+                    @if ($selectedAccountId)<input type="hidden" name="account" value="{{ $selectedAccountId }}">@endif
+                    @if (! $showArchived && ! $showStarred)<input type="hidden" name="folder" value="{{ $folder }}">@endif
+                    @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
+                    @if ($showStarred)<input type="hidden" name="starred" value="1">@endif
+                    <input type="text" name="name" x-ref="name" x-show="naming" x-cloak maxlength="60"
+                           placeholder="Name this search&hellip;" aria-label="Name for this saved search"
+                           value="{{ Str::limit(request('q'), 55, '') }}">
+                    <button class="btn sm ghost" title="Save this search">
+                        <svg class="ic-sm"><use href="#i-star"/></svg><span x-text="naming ? 'Save' : 'Save search'"></span>
+                    </button>
+                </form>
+            @endif
             <form method="GET" action="{{ route('inbox.index') }}">
                 @if ($showArchived)<input type="hidden" name="archived" value="1">@endif
                 <select name="account" onchange="this.form.submit()" class="tb-account" title="Filter by account">
