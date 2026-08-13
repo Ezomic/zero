@@ -38,6 +38,12 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(MailAccount::class);
     }
 
+    /** @return HasMany<SavedSearch, $this> */
+    public function savedSearches(): HasMany
+    {
+        return $this->hasMany(SavedSearch::class)->orderBy('position')->orderBy('id');
+    }
+
     /** @return HasMany<Draft, $this> */
     public function drafts(): HasMany
     {

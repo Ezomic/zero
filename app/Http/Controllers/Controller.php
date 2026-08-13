@@ -17,4 +17,24 @@ abstract class Controller
     {
         return Rule::exists('mail_accounts', 'id')->where('user_id', auth()->id());
     }
+
+    /**
+     * validate() is typed as returning array<array-key, mixed>, which is not
+     * an update() payload at PHPStan level 10. Rekeying it once here is what
+     * every caller needs, and keeps the branches from each rebuilding it (one
+     * of them forgot to, which is how display_name went missing: ZERO-88).
+     *
+     * @param  mixed  $validated  the return of Request::validate()
+     * @return array<string, mixed>
+     */
+    protected function stringKeyed($validated): array
+    {
+        $data = [];
+
+        foreach (is_array($validated) ? $validated : [] as $key => $value) {
+            $data[(string) $key] = $value;
+        }
+
+        return $data;
+    }
 }

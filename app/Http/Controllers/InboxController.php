@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Mail\BuildScopedEmailQuery;
 use App\Actions\Mail\QueueMirrorAction;
 use App\Actions\Mail\ReadInvitations;
 use App\Concerns\InteractsWithCurrentUser;
@@ -11,8 +12,8 @@ use App\Models\MailFolder;
 use App\Models\MutedThread;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
+use App\Support\MailScope;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class InboxController extends Controller
     public function __construct(
         protected QueueMirrorAction $queueMirror,
         protected ReadInvitations $readInvitations,
+        protected BuildScopedEmailQuery $scopedQuery,
     ) {}
 
     /**
@@ -137,29 +139,16 @@ class InboxController extends Controller
      */
     protected function listData(?int $selectedAccountId, string $folder, bool $showArchived, ?string $q, array $availableFolders, bool $showStarred = false): array
     {
-        $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
-
-        $base = Email::query()
-            ->whereIn('mail_account_id', $accountIds)
-            ->where('is_deleted', false);
-
-        if ($showStarred) {
-            // Starred cuts across folders the way archived does, so it does
-            // not narrow to one (ZERO-113).
-            $base->where('is_starred', true);
-        } elseif ($showArchived) {
-            $base->where('is_archived', true);
-        } else {
-            $base->where('folder', $folder)->where('is_archived', false);
-        }
-
-        if ($selectedAccountId) {
-            $base->where('mail_account_id', $selectedAccountId);
-        }
-
-        if ($q) {
-            $this->applySearch($base, $q);
-        }
+        // The scope lives in one place now, because a saved view's unread
+        // count is a second caller and a count built from its own copy of
+        // these filters is a count that drifts (ZERO-120).
+        $base = $this->scopedQuery->handle($this->currentUser(), new MailScope(
+            accountId: $selectedAccountId,
+            folder: $folder,
+            archived: $showArchived,
+            starred: $showStarred,
+            query: $q,
+        ));
 
         // Collapse to the latest message per conversation thread. Kept as a
         // subquery rather than a plucked list for the same reason as the
@@ -554,73 +543,6 @@ class InboxController extends Controller
         });
 
         return array_map(fn (mixed $n): string => is_string($n) ? $n : '', $names);
-    }
-
-    /**
-     * Narrows the list query to messages matching $q.
-     *
-     * Both paths constrain the query in place rather than resolving a list of
-     * ids to feed back in. Pulling every match out first meant one bound
-     * parameter per hit, and SQLite caps a statement at ~32k of them: a term
-     * common enough to appear in tens of thousands of messages produced a
-     * search that could only fail, and only on a mailbox large enough to
-     * matter (ZERO-91). The FTS subquery below binds exactly once, whatever
-     * it matches.
-     *
-     * @param  Builder<Email>  $base
-     */
-    protected function applySearch(Builder $base, string $q): void
-    {
-        $match = DB::getDriverName() === 'sqlite' ? $this->toFtsQuery($q) : '';
-
-        if ($match !== '' && $this->ftsIsUsable($match)) {
-            $base->whereIn('id', function (QueryBuilder $query) use ($match): void {
-                $query->select('rowid')
-                    ->from('emails_fts')
-                    ->whereRaw('emails_fts MATCH ?', [$match]);
-            });
-
-            return;
-        }
-
-        $base->where(function (Builder $query) use ($q): void {
-            $query->where('subject', 'like', "%{$q}%")
-                ->orWhere('from_address', 'like', "%{$q}%")
-                ->orWhere('body_text', 'like', "%{$q}%");
-        });
-    }
-
-    /**
-     * A missing emails_fts table or a MATCH expression FTS5 rejects used to
-     * surface when the id list was resolved, which is what selected the LIKE
-     * fallback. As a subquery it would instead blow up the whole page, so ask
-     * the question up front. LIMIT 1 keeps it cheap regardless of hit count.
-     */
-    protected function ftsIsUsable(string $match): bool
-    {
-        try {
-            DB::table('emails_fts')
-                ->select('rowid')
-                ->whereRaw('emails_fts MATCH ?', [$match])
-                ->limit(1)
-                ->exists();
-
-            return true;
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    protected function toFtsQuery(string $q): string
-    {
-        $terms = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        $terms = array_map(
-            fn ($term) => '"'.str_replace('"', '""', $term).'"*',
-            $terms
-        );
-
-        return implode(' AND ', $terms);
     }
 
     protected function authorizeOwnership(Email $email): void

@@ -1,9 +1,12 @@
 @php
     use App\Models\Email;
     use App\Models\MailFolder;
+    use App\Services\Mail\SavedSearchCounts;
+    use App\Support\MailScope;
 
-    $navAccounts = auth()->user()->mailAccounts()->with('folders')->get();
-    $draftsCount = auth()->user()->drafts()->count();
+    $navUser = auth()->user();
+    $navAccounts = $navUser->mailAccounts()->with('folders')->get();
+    $draftsCount = $navUser->drafts()->count();
 
     $selectedAccountId = request()->integer('account');
     $selectedFolder = request()->get('folder', 'INBOX');
@@ -38,6 +41,15 @@
         ->where('is_starred', true)
         ->where('is_deleted', false)
         ->count();
+
+    // Unlike the counts above, one of these is a full FTS query rather than an
+    // indexed column filter, so they come back as one cached map instead of a
+    // search per saved view on every render (ZERO-120).
+    $savedSearches = $navUser->savedSearches;
+    $savedCounts = app(SavedSearchCounts::class)->forUser($navUser, $savedSearches);
+    $activeSavedId = request()->routeIs('inbox.index')
+        ? $savedSearches->first(fn ($s) => MailScope::fromSavedSearch($s)->matchesRequest(request()))?->id
+        : null;
 @endphp
 
 <div class="rail-scroll">
@@ -65,6 +77,28 @@
             <svg class="ic"><use href="#i-archive"/></svg>Archived
         </a>
     </div>
+
+    @if ($savedSearches->isNotEmpty())
+        <div class="nav-label saved-label">
+            Saved
+            <a href="{{ route('savedSearches.index') }}" title="Manage saved searches">Manage</a>
+        </div>
+        <div class="nav-section">
+            @foreach ($savedSearches as $saved)
+                @php $savedMissing = $saved->accountIsMissing($navUser); @endphp
+                <a href="{{ route('inbox.index', MailScope::fromSavedSearch($saved)->toQueryParams()) }}"
+                   class="nav-item {{ $activeSavedId === $saved->id ? 'active' : '' }}"
+                   title="{{ $savedMissing ? 'The account this view was saved against no longer exists' : $saved->query }}">
+                    <svg class="ic"><use href="#i-search"/></svg>{{ $saved->name }}
+                    @if ($savedMissing)
+                        <span class="count saved-gone" title="Account removed">!</span>
+                    @elseif (($savedCounts[$saved->id] ?? 0) > 0)
+                        <span class="count">{{ $savedCounts[$saved->id] > 99 ? '99+' : $savedCounts[$saved->id] }}</span>
+                    @endif
+                </a>
+            @endforeach
+        </div>
+    @endif
 
     {{-- Folders of the account picked in the top selector. No account picked =
          unified view, so only the smart views above are shown. --}}

@@ -9,6 +9,7 @@ use App\Http\Controllers\DraftController;
 use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
+use App\Http\Controllers\SavedSearchController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SenderController;
 use App\Http\Controllers\TriageController;
@@ -56,6 +57,12 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
 
     Route::post('/emails/{email}/unsubscribe', [UnsubscribeController::class, 'store'])->name('inbox.unsubscribe');
+
+    Route::get('/saved-searches', [SavedSearchController::class, 'index'])->name('savedSearches.index');
+    Route::post('/saved-searches', [SavedSearchController::class, 'store'])->name('savedSearches.store');
+    Route::patch('/saved-searches/{savedSearch}', [SavedSearchController::class, 'update'])->name('savedSearches.update');
+    Route::post('/saved-searches/{savedSearch}/move', [SavedSearchController::class, 'move'])->name('savedSearches.move');
+    Route::delete('/saved-searches/{savedSearch}', [SavedSearchController::class, 'destroy'])->name('savedSearches.destroy');
 
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');
