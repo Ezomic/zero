@@ -330,6 +330,11 @@
                             if (form) form.requestSubmit();
                             break;
                         }
+                        case 's': {
+                            const form = focused?.querySelector('form[data-action="star"]');
+                            if (form) form.requestSubmit();
+                            break;
+                        }
                         case '#': {
                             if (confirm('Delete this conversation?')) {
                                 focused?.querySelector('form[data-action="delete"]')?.requestSubmit();
@@ -357,6 +362,7 @@
                             ['Enter / o', 'Open focused conversation'],
                             ['e', 'Archive focused conversation'],
                             ['u', 'Mark focused conversation unread'],
+                ['s', 'Star or unstar focused conversation'],
                             ['#', 'Delete focused conversation'],
                             ['r', 'Reply to focused conversation'],
                             ['c', 'Compose new message'],

@@ -50,8 +50,9 @@ class InboxController extends Controller
         $availableFolders = $this->foldersFor($selectedAccountId);
         $folder = in_array($request->get('folder'), $availableFolders, true) ? $request->get('folder') : 'INBOX';
         $showArchived = $request->boolean('archived');
+        $showStarred = $request->boolean('starred');
 
-        $viewData = $this->listData($selectedAccountId, $folder, $showArchived, $request->string('q')->toString() ?: null, $availableFolders);
+        $viewData = $this->listData($selectedAccountId, $folder, $showArchived, $request->string('q')->toString() ?: null, $availableFolders, $showStarred);
         $viewData['openThread'] = null;
 
         if ($request->filled('open')) {
@@ -133,7 +134,7 @@ class InboxController extends Controller
      * @param  array<int, string>  $availableFolders
      * @return array<string, mixed>
      */
-    protected function listData(?int $selectedAccountId, string $folder, bool $showArchived, ?string $q, array $availableFolders): array
+    protected function listData(?int $selectedAccountId, string $folder, bool $showArchived, ?string $q, array $availableFolders, bool $showStarred = false): array
     {
         $accountIds = $this->currentUser()->mailAccounts()->pluck('id');
 
@@ -141,7 +142,11 @@ class InboxController extends Controller
             ->whereIn('mail_account_id', $accountIds)
             ->where('is_deleted', false);
 
-        if ($showArchived) {
+        if ($showStarred) {
+            // Starred cuts across folders the way archived does, so it does
+            // not narrow to one (ZERO-113).
+            $base->where('is_starred', true);
+        } elseif ($showArchived) {
             $base->where('is_archived', true);
         } else {
             $base->where('folder', $folder)->where('is_archived', false);
@@ -183,6 +188,7 @@ class InboxController extends Controller
             'accounts' => $this->currentUser()->mailAccounts()->get(),
             'folder' => $folder,
             'showArchived' => $showArchived,
+            'showStarred' => $showStarred,
             'threadCounts' => $threadCounts,
             'folders' => $availableFolders,
             'selectedAccountId' => $selectedAccountId,
@@ -248,6 +254,26 @@ class InboxController extends Controller
         $this->threadEmails($email)->update(['is_archived' => false]);
 
         return back()->with('status', 'Conversation moved back to inbox.');
+    }
+
+    /**
+     * Stars or unstars, per message rather than per thread.
+     *
+     * Every other action here cascades across the conversation, because
+     * filing or reading one message of a thread means the whole thing. A star
+     * is the opposite: it marks the one message worth coming back to, and
+     * starring twelve replies because one mattered would make the Starred
+     * view useless (ZERO-113).
+     */
+    public function toggleStar(Email $email): RedirectResponse
+    {
+        $this->authorizeOwnership($email);
+
+        $starred = ! $email->is_starred;
+        $email->update(['is_starred' => $starred]);
+        $this->queueMirror->handle($email, $starred ? 'star' : 'unstar');
+
+        return back()->with('status', $starred ? 'Starred.' : 'Star removed.');
     }
 
     public function markUnread(Email $email): RedirectResponse

@@ -119,6 +119,13 @@
         @endif
 
         <div style="display:flex; gap:6px; padding:12px 16px; border-top:1px solid var(--border-soft);">
+            <form method="POST" action="{{ route('inbox.toggleStar', $message) }}">
+                @csrf
+                <button type="submit" class="btn sm ghost {{ $message->is_starred ? 'starred' : '' }}"
+                        aria-pressed="{{ $message->is_starred ? 'true' : 'false' }}">
+                    <svg class="ic-sm"><use href="#i-star"/></svg>{{ $message->is_starred ? 'Starred' : 'Star' }}
+                </button>
+            </form>
             <a href="{{ route('compose.reply', $message) }}" class="btn sm ghost"><svg class="ic-sm"><use href="#i-reply"/></svg>Reply</a>
             <a href="{{ route('compose.replyAll', $message) }}" class="btn sm ghost">Reply All</a>
             <a href="{{ route('compose.forward', $message) }}" class="btn sm ghost">Forward</a>

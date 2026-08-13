@@ -225,4 +225,63 @@ class ImapSyncServiceBatchActionsTest extends TestCase
         $this->assertNotNull($action->failed_at);
         $this->assertSame(0, PendingMirrorAction::query()->pending()->count());
     }
+
+    /**
+     * Star rides the same batching as the read flag, so a burst of stars is
+     * one UID STORE rather than one IMAP session each (ZERO-113).
+     */
+    public function test_stars_batch_into_one_flagged_store(): void
+    {
+        [$client, $connection] = $this->client();
+        $connection->shouldReceive('selectFolder')->once()->with('INBOX');
+
+        $connection->shouldReceive('store')
+            ->once()
+            ->with(['\\Flagged'], 20, 22, '+')
+            ->andReturn($this->response(true));
+
+        $actions = collect(['20', '21', '22'])->map(fn ($uid) => $this->queue('star', $uid));
+
+        (new TestableImapSyncServiceForBatch($client))->applyPendingActions($this->account, $actions);
+
+        $this->assertSame(0, PendingMirrorAction::count());
+    }
+
+    public function test_unstarring_removes_the_flag(): void
+    {
+        [$client, $connection] = $this->client();
+        $connection->shouldReceive('selectFolder')->once()->with('INBOX');
+
+        $connection->shouldReceive('store')
+            ->once()
+            ->with(['\\Flagged'], 30, null, '-')
+            ->andReturn($this->response(true));
+
+        (new TestableImapSyncServiceForBatch($client))->applyPendingActions(
+            $this->account,
+            collect([$this->queue('unstar', '30')]),
+        );
+
+        $this->assertSame(0, PendingMirrorAction::count());
+    }
+
+    /**
+     * Read state and stars are separate flags, so a folder holding both kinds
+     * of pending action issues one command per flag rather than mixing them.
+     */
+    public function test_read_and_star_actions_do_not_share_a_command(): void
+    {
+        [$client, $connection] = $this->client();
+        $connection->shouldReceive('selectFolder')->once()->with('INBOX');
+
+        $connection->shouldReceive('store')->once()->with(['\\Seen'], 40, null, '+')->andReturn($this->response(true));
+        $connection->shouldReceive('store')->once()->with(['\\Flagged'], 41, null, '+')->andReturn($this->response(true));
+
+        (new TestableImapSyncServiceForBatch($client))->applyPendingActions(
+            $this->account,
+            collect([$this->queue('mark_read', '40'), $this->queue('star', '41')]),
+        );
+
+        $this->assertSame(0, PendingMirrorAction::count());
+    }
 }

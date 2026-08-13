@@ -140,6 +140,18 @@ class ImapSyncService
      *  deadline is crossed (checkpointed before we bail). */
     protected const SYNC_TIME_BUDGET_SECONDS = 1500;
 
+    /**
+     * Mirror actions that are a single IMAP flag, as [flag, add-or-remove].
+     * These batch into one UID STORE per contiguous run, so adding one costs
+     * nothing extra per message (ZERO-113).
+     */
+    protected const FLAG_ACTIONS = [
+        'mark_read' => ['\Seen', '+'],
+        'mark_unread' => ['\Seen', '-'],
+        'star' => ['\Flagged', '+'],
+        'unstar' => ['\Flagged', '-'],
+    ];
+
     public function __construct(
         protected ImapClientFactory $clientFactory,
     ) {}
@@ -388,11 +400,11 @@ class ImapSyncService
 
         $byAction = $actions->groupBy('action');
 
-        foreach (['mark_read' => '+', 'mark_unread' => '-'] as $name => $mode) {
+        foreach (self::FLAG_ACTIONS as $name => [$flag, $mode]) {
             $group = $byAction->get($name);
 
             if ($group instanceof Collection && $group->isNotEmpty()) {
-                $this->storeFlagForGroup($client, $group, '\Seen', $mode);
+                $this->storeFlagForGroup($client, $group, $flag, $mode);
             }
         }
 
@@ -903,16 +915,19 @@ class ImapSyncService
 
         $local = $this->reconcilableEmails($account, $folderName);
 
-        if ($local->isEmpty()) {
+        if ($local === []) {
             return;
         }
 
         $present = array_flip($serverUids);
+        $gone = [];
+        $stillHere = [];
 
-        $gone = $local->reject(fn (array $row): bool => isset($present[$row['uid']]));
-        $this->markDeleted($gone->pluck('id'));
+        foreach ($local as $row) {
+            isset($present[$row['uid']]) ? $stillHere[] = $row : $gone[] = $row['id'];
+        }
 
-        $stillHere = $local->filter(fn (array $row): bool => isset($present[$row['uid']]));
+        $this->markDeleted($gone);
         $this->reconcileReadFlags($folder, $stillHere);
     }
 
@@ -922,11 +937,11 @@ class ImapSyncService
      * server legitimately still reports it unseen, and reconciling against
      * that would undo what the user just did.
      *
-     * @return Collection<int, array{id: int, uid: int, is_read: bool}>
+     * @return list<array{id: int, uid: int, is_read: bool, is_starred: bool}>
      */
-    protected function reconcilableEmails(MailAccount $account, string $folderName): Collection
+    protected function reconcilableEmails(MailAccount $account, string $folderName): array
     {
-        return Email::query()
+        $rows = Email::query()
             ->where('mail_account_id', $account->id)
             ->where('folder', $folderName)
             ->where('is_deleted', false)
@@ -937,40 +952,82 @@ class ImapSyncService
                     ->where('pending_mirror_actions.mail_account_id', $account->id)
                     ->whereColumn('pending_mirror_actions.email_id', 'emails.id');
             })
-            ->get(['id', 'uid', 'is_read'])
-            ->map(fn (Email $email): array => [
+            ->get(['id', 'uid', 'is_read', 'is_starred']);
+
+        $reconcilable = [];
+
+        foreach ($rows as $email) {
+            $reconcilable[] = [
                 'id' => (int) $email->id,
                 'uid' => (int) $email->uid,
                 'is_read' => (bool) $email->is_read,
-            ]);
+                'is_starred' => (bool) $email->is_starred,
+            ];
+        }
+
+        return $reconcilable;
     }
 
     /**
      * @param  Collection<int, array{id: int, uid: int, is_read: bool}>  $emails
      */
-    protected function reconcileReadFlags(Folder $folder, Collection $emails): void
+    /** @param list<array{id: int, uid: int, is_read: bool, is_starred: bool}> $emails */
+    protected function reconcileReadFlags(Folder $folder, array $emails): void
     {
-        if ($emails->isEmpty()) {
+        if ($emails === []) {
             return;
         }
 
+        // UNSEEN reports the messages *without* \Seen, so a hit means unread.
+        $this->reconcileFlag($folder, $emails, ['UNSEEN'], 'is_read', matchMeans: false);
+
+        // FLAGGED reports the messages *with* \Flagged, so a hit means starred.
+        $this->reconcileFlag($folder, $emails, ['FLAGGED'], 'is_starred', matchMeans: true);
+    }
+
+    /**
+     * Brings one boolean column in line with one IMAP search.
+     *
+     * Each search is a single command whatever the folder holds, so this stays
+     * flat in cost, but it is still a round trip: adding a flag here is adding
+     * a command to every folder on every sync (ZERO-113).
+     *
+     * $matchMeans is what appearing in the result set implies about the
+     * column, which differs per search: UNSEEN matches the unread ones,
+     * FLAGGED matches the starred ones.
+     *
+     * @param  list<array{id: int, uid: int, is_read: bool, is_starred: bool}>  $emails
+     * @param  list<string>  $criteria
+     */
+    protected function reconcileFlag(Folder $folder, array $emails, array $criteria, string $column, bool $matchMeans): void
+    {
         try {
-            $unseen = array_flip(
-                $this->numericUids($folder->getClient()->getConnection()->search(['UNSEEN'])->validatedData())
+            $matched = array_flip(
+                $this->numericUids($folder->getClient()->getConnection()->search($criteria)->validatedData())
             );
         } catch (\Throwable $e) {
             // Not worth failing the folder over: the messages themselves are
             // synced, only their flags are stale for another run.
-            Log::warning("UNSEEN search failed for {$folder->full_name}: ".$e->getMessage());
+            Log::warning(implode(' ', $criteria)." search failed for {$folder->full_name}: ".$e->getMessage());
 
             return;
         }
 
-        $shouldBeRead = $emails->filter(fn (array $row): bool => ! $row['is_read'] && ! isset($unseen[$row['uid']]));
-        $shouldBeUnread = $emails->filter(fn (array $row): bool => $row['is_read'] && isset($unseen[$row['uid']]));
+        $shouldBeTrue = [];
+        $shouldBeFalse = [];
 
-        $this->updateInChunks($shouldBeRead->pluck('id'), ['is_read' => true]);
-        $this->updateInChunks($shouldBeUnread->pluck('id'), ['is_read' => false]);
+        foreach ($emails as $row) {
+            $server = isset($matched[$row['uid']]) ? $matchMeans : ! $matchMeans;
+
+            if ($server === $row[$column]) {
+                continue;
+            }
+
+            $server ? $shouldBeTrue[] = $row['id'] : $shouldBeFalse[] = $row['id'];
+        }
+
+        $this->updateInChunks($shouldBeTrue, [$column => true]);
+        $this->updateInChunks($shouldBeFalse, [$column => false]);
     }
 
     /**
@@ -992,8 +1049,8 @@ class ImapSyncService
         return $uids;
     }
 
-    /** @param Collection<int, mixed> $ids */
-    protected function markDeleted(Collection $ids): void
+    /** @param list<int> $ids */
+    protected function markDeleted(array $ids): void
     {
         $this->updateInChunks($ids, ['is_deleted' => true]);
     }
@@ -1002,13 +1059,13 @@ class ImapSyncService
      * Chunked because the id list is bounded only by the size of the folder,
      * and SQLite will not bind more than ~32k parameters in one statement.
      *
-     * @param  Collection<int, mixed>  $ids
+     * @param  list<int>  $ids
      * @param  array<string, mixed>  $attributes
      */
-    protected function updateInChunks(Collection $ids, array $attributes): void
+    protected function updateInChunks(array $ids, array $attributes): void
     {
-        foreach ($ids->chunk(500) as $chunk) {
-            Email::whereIn('id', $chunk->all())->update($attributes);
+        foreach (array_chunk($ids, 500) as $chunk) {
+            Email::whereIn('id', $chunk)->update($attributes);
         }
     }
 
@@ -1033,8 +1090,10 @@ class ImapSyncService
             // Reconcile read flag — catches messages read on another device
             // since last sync.
             $serverIsRead = $message->getFlags()->has('Seen');
-            if ($existing->is_read !== $serverIsRead) {
-                $existing->update(['is_read' => $serverIsRead]);
+            $serverIsStarred = $message->getFlags()->has('Flagged');
+
+            if ($existing->is_read !== $serverIsRead || $existing->is_starred !== $serverIsStarred) {
+                $existing->update(['is_read' => $serverIsRead, 'is_starred' => $serverIsStarred]);
             }
 
             return $numericUid;
@@ -1066,6 +1125,7 @@ class ImapSyncService
         $subject = MimeHeader::decode($message->getSubject()->toString()) ?: '(no subject)';
         $sentAt = $this->messageDate($message);
         $isRead = $message->getFlags()->has('Seen');
+        $isStarred = $message->getFlags()->has('Flagged');
 
         $email = Email::create([
             'mail_account_id' => $account->id,
@@ -1085,6 +1145,7 @@ class ImapSyncService
             'body_html' => null,
             'body_text' => null,
             'is_read' => $isRead,
+            'is_starred' => $isStarred,
             'has_attachments' => false,
             'sent_at' => $sentAt,
         ]);

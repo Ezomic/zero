@@ -523,3 +523,12 @@ svg{ display:block; flex-shrink:0; }
   .add-tiles{ grid-template-columns:1fr; }
   .triage-wrap{ padding:24px 16px 80px; }
 }
+
+/* Star toggle: outline by default, filled amber when set (ZERO-113). */
+.star-form{ display:flex; align-items:center; }
+.star-toggle{ background:none; border:none; padding:2px; cursor:pointer; color:var(--text-faint); display:flex; }
+.star-toggle:hover{ color:var(--accent-2); }
+.star-toggle.on{ color:#F5A524; }
+.star-toggle.on svg{ fill:#F5A524; }
+.btn.starred{ color:#F5A524; }
+.btn.starred svg{ fill:#F5A524; }
