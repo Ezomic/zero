@@ -9,6 +9,7 @@ use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MutedThread;
 use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
 use App\Support\SearchableBody;
@@ -168,6 +169,7 @@ class ImapSyncService
         // Scopes the contact memo to this run, so the queue worker does not
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
+        MutedThread::forgetMemo();
 
         $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
@@ -1127,6 +1129,13 @@ class ImapSyncService
         $isRead = $message->getFlags()->has('Seen');
         $isStarred = $message->getFlags()->has('Flagged');
 
+        // A muted conversation's later replies are filed on arrival and stay
+        // silent. Checked before the create so the row lands archived, and
+        // before the broadcast below so a muted thread cannot still pop a
+        // toast and ping, which would not be muted in any sense the user
+        // would recognise (ZERO-119).
+        $muted = MutedThread::isMuted((int) $account->id, $threadId);
+
         $email = Email::create([
             'mail_account_id' => $account->id,
             'ulid' => $ulid,
@@ -1146,11 +1155,12 @@ class ImapSyncService
             'body_text' => null,
             'is_read' => $isRead,
             'is_starred' => $isStarred,
+            'is_archived' => $muted,
             'has_attachments' => false,
             'sent_at' => $sentAt,
         ]);
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew) {
+        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,

@@ -8,6 +8,7 @@ use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MutedThread;
 use App\Support\Payload;
 use App\Support\SearchableBody;
 use App\Support\StoredAttachmentName;
@@ -79,6 +80,7 @@ class GraphMailSyncService
         // Scopes the contact memo to this run, so the queue worker does not
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
+        MutedThread::forgetMemo();
 
         try {
             $accessToken = $this->tokenRefresher->freshAccessToken($account);
@@ -410,6 +412,10 @@ class GraphMailSyncService
         $isRead = Payload::bool($message, 'isRead');
         $isStarred = $this->isFlagged($message);
 
+        // See ZERO-119: a muted conversation's replies land archived and
+        // silent, decided before the create and before the broadcast.
+        $muted = MutedThread::isMuted((int) $account->id, $threadId);
+
         $email = Email::create([
             'mail_account_id' => $account->id,
             'ulid' => $ulid,
@@ -427,11 +433,12 @@ class GraphMailSyncService
             'body_text' => null,
             'is_read' => $isRead,
             'is_starred' => $isStarred,
+            'is_archived' => $muted,
             'has_attachments' => $message['hasAttachments'] ?? false,
             'sent_at' => $sentAt,
         ]);
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew) {
+        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,

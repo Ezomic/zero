@@ -45,6 +45,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/emails/{email}/archive', [InboxController::class, 'archive'])->name('inbox.archive');
     Route::post('/emails/{email}/unarchive', [InboxController::class, 'unarchive'])->name('inbox.unarchive');
     Route::post('/emails/{email}/star', [InboxController::class, 'toggleStar'])->name('inbox.toggleStar');
+    Route::post('/emails/{email}/mute', [InboxController::class, 'toggleMute'])->name('inbox.toggleMute');
     Route::post('/emails/{email}/mark-unread', [InboxController::class, 'markUnread'])->name('inbox.markUnread');
     Route::post('/emails/{email}/move', [InboxController::class, 'move'])->name('inbox.move');
     Route::delete('/emails/{email}', [InboxController::class, 'destroy'])->name('inbox.destroy');

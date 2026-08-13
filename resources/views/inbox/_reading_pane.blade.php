@@ -46,6 +46,13 @@
                 <button class="icon-btn" title="Archive"><svg class="ic-sm"><use href="#i-archive"/></svg></button>
             </form>
         @endif
+        <form method="POST" action="{{ route('inbox.toggleMute', $email) }}">
+            @csrf
+            <button class="icon-btn {{ ($threadIsMuted ?? false) ? 'active' : '' }}"
+                    title="{{ ($threadIsMuted ?? false) ? 'Unmute: replies will reach the inbox again' : 'Mute: later replies skip the inbox' }}">
+                <svg class="ic-sm"><use href="#i-mute"/></svg>
+            </button>
+        </form>
         <form method="POST" action="{{ route('inbox.markUnread', $email) }}">
             @csrf
             <button class="icon-btn" title="Mark unread"><svg class="ic-sm"><use href="#i-check"/></svg></button>

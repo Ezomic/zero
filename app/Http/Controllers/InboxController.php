@@ -8,6 +8,7 @@ use App\Concerns\InteractsWithCurrentUser;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MutedThread;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
 use Illuminate\Database\Eloquent\Builder;
@@ -233,6 +234,9 @@ class InboxController extends Controller
             'email' => $email,
             'availableFolders' => $availableFolders,
             'suggestedFolder' => $suggestedFolder,
+            'threadIsMuted' => MutedThread::where('mail_account_id', $email->mail_account_id)
+                ->where('thread_id', $email->thread_id)
+                ->exists(),
             'invitations' => $this->readInvitations->handle(
                 $messages,
                 is_string($configuredTimezone) ? $configuredTimezone : 'UTC',
@@ -274,6 +278,40 @@ class InboxController extends Controller
         $this->queueMirror->handle($email, $starred ? 'star' : 'unstar');
 
         return back()->with('status', $starred ? 'Starred.' : 'Star removed.');
+    }
+
+    /**
+     * Mutes or unmutes the conversation.
+     *
+     * Muting archives what is already here and records the thread so later
+     * replies are filed on arrival rather than reappearing in the inbox
+     * (ZERO-119). Nothing is hidden: muted threads stay searchable and stay
+     * in the archived view.
+     */
+    public function toggleMute(Email $email): RedirectResponse
+    {
+        $this->authorizeOwnership($email);
+
+        $existing = MutedThread::where('mail_account_id', $email->mail_account_id)
+            ->where('thread_id', $email->thread_id)
+            ->first();
+
+        if ($existing) {
+            $existing->delete();
+            MutedThread::forgetMemo();
+
+            return back()->with('status', 'Conversation unmuted.');
+        }
+
+        MutedThread::create([
+            'mail_account_id' => $email->mail_account_id,
+            'thread_id' => $email->thread_id,
+        ]);
+        MutedThread::forgetMemo();
+
+        $this->threadEmails($email)->update(['is_archived' => true]);
+
+        return redirect()->route('inbox.index')->with('status', 'Conversation muted — later replies will be archived.');
     }
 
     public function markUnread(Email $email): RedirectResponse
