@@ -310,6 +310,17 @@ svg{ display:block; flex-shrink:0; }
 .saved-meta a{ color:var(--text-dim); }
 .saved-row-actions{ display:flex; align-items:center; gap:4px; }
 .saved-row-actions button[disabled]{ opacity:.35; cursor:default; }
+.att-filters{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:16px; }
+.att-list{ display:flex; flex-direction:column; gap:8px; }
+.att-row{ display:flex; align-items:center; gap:12px; padding:11px 14px; border:1px solid var(--border); border-radius:10px; background:var(--bg-1); }
+.att-row.att-gone{ opacity:.6; }
+.att-icon{ flex-shrink:0; color:var(--text-faint); }
+.att-main{ flex:1; min-width:0; }
+.att-name{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.att-meta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:3px; font-size:12px; color:var(--text-faint); }
+.att-meta a{ color:var(--text-dim); }
+.att-meta a:hover{ color:var(--text); }
+.att-unavailable{ flex-shrink:0; font-size:12px; font-weight:600; color:var(--danger); }
 .chip{ display:inline-flex; align-items:center; gap:6px; background:var(--bg-2); border:1px solid var(--border); padding:4px 9px 4px 5px; border-radius:20px; font-size:12px; color:var(--text-dim); }
 .chip .dot{ width:16px; height:16px; border-radius:50%; color:#fff; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; }
 .rp-actions{ display:flex; gap:6px; flex-shrink:0; }
