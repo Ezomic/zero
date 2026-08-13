@@ -45,6 +45,7 @@ class MailAccountController extends Controller
         $validated = $request->validate([
             'email_address' => ['required', 'email'],
             'display_name' => ['nullable', 'string', 'max:255'],
+            'signature' => ['nullable', 'string', 'max:5000'],
             'imap_host' => ['required', 'string'],
             'imap_port' => ['required', 'integer'],
             'imap_encryption' => ['nullable', 'in:ssl,tls'],
@@ -93,6 +94,7 @@ class MailAccountController extends Controller
         if ($account->usesOAuth()) {
             $data = $this->stringKeyed($request->validate([
                 'display_name' => ['nullable', 'string', 'max:255'],
+                'signature' => ['nullable', 'string', 'max:5000'],
             ]));
 
             $data['is_active'] = $request->boolean('is_active');
@@ -105,6 +107,7 @@ class MailAccountController extends Controller
         $validated = $request->validate([
             'email_address' => ['required', 'email'],
             'display_name' => ['nullable', 'string', 'max:255'],
+            'signature' => ['nullable', 'string', 'max:5000'],
             'imap_host' => ['required', 'string'],
             'imap_port' => ['required', 'integer'],
             'imap_encryption' => ['nullable', 'in:ssl,tls'],

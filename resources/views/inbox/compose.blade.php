@@ -20,7 +20,7 @@
             <div class="composer-body">
                 <div class="cfield">
                     <label>From</label>
-                    <select name="mail_account_id" required>
+                    <select name="mail_account_id" id="field-account" required>
                         @foreach ($accounts as $acc)
                             <option value="{{ $acc->id }}" @selected($prefill['mail_account_id'] == $acc->id)>{{ $acc->email_address }}</option>
                         @endforeach
@@ -176,6 +176,47 @@
                     }
                 });
             }
+
+            // --- Per-account signature (ZERO-116) ---
+            (function () {
+                const signatures = @json($signatures);
+                const select = document.getElementById('field-account');
+                const body = document.getElementById('field-body');
+
+                if (!select || !body) return;
+
+                // The RFC-conventional separator, which also gives us a
+                // reliable seam to cut on when the account changes.
+                const SEP = '\n\n-- \n';
+
+                function withoutSignature(text) {
+                    const at = text.lastIndexOf(SEP);
+                    return at === -1 ? text : text.slice(0, at);
+                }
+
+                function blockFor(accountId) {
+                    const sig = signatures[accountId];
+                    return sig ? SEP + sig : '';
+                }
+
+                function apply() {
+                    // Replace rather than append, so switching accounts never
+                    // stacks two sign-offs.
+                    body.value = withoutSignature(body.value) + blockFor(select.value);
+                }
+
+                // A resumed draft already carries whatever the author left in
+                // it, signature included; re-applying would duplicate it.
+                if (!body.value.includes(SEP)) {
+                    const before = body.value;
+                    body.value = before + blockFor(select.value);
+                    // Reply and forward put the cursor above the quoted text,
+                    // so keep it there rather than at the very end.
+                    body.setSelectionRange(0, 0);
+                }
+
+                select.addEventListener('change', apply);
+            })();
 
             setupAutocomplete('field-to');
             setupAutocomplete('field-cc');

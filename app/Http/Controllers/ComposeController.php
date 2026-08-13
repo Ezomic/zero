@@ -10,6 +10,7 @@ use App\Models\MailAccount;
 use App\Services\Mail\MailSenderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class ComposeController extends Controller
@@ -36,7 +37,11 @@ class ComposeController extends Controller
             ];
         }
 
-        return view('inbox.compose', compact('accounts', 'prefill'));
+        return view('inbox.compose', [
+            'accounts' => $accounts,
+            'prefill' => $prefill,
+            'signatures' => $this->signaturesFor($accounts),
+        ]);
     }
 
     public function reply(Email $email): View
@@ -123,7 +128,11 @@ class ComposeController extends Controller
                 ."Subject: {$subject}\n\n"
                 .$originalText;
 
-            return view('inbox.compose', compact('accounts', 'prefill'));
+            return view('inbox.compose', [
+                'accounts' => $accounts,
+                'prefill' => $prefill,
+                'signatures' => $this->signaturesFor($accounts),
+            ]);
         }
 
         $prefill['subject'] = preg_match('/^re:/i', $subject) ? $subject : "Re: {$subject}";
@@ -151,7 +160,36 @@ class ComposeController extends Controller
             $prefill['cc'] = $others->implode(', ');
         }
 
-        return view('inbox.compose', compact('accounts', 'prefill'));
+        return view('inbox.compose', [
+            'accounts' => $accounts,
+            'prefill' => $prefill,
+            'signatures' => $this->signaturesFor($accounts),
+        ]);
+    }
+
+    /**
+     * Signature per account id, for the composer to apply client-side.
+     *
+     * Applied in the browser rather than baked into the prefill so it is
+     * visible and editable before sending, and so switching account swaps it
+     * rather than silently changing what goes out (ZERO-116).
+     *
+     * @param  Collection<int, MailAccount>  $accounts
+     * @return array<int, string>
+     */
+    protected function signaturesFor($accounts): array
+    {
+        $signatures = [];
+
+        foreach ($accounts as $account) {
+            $signature = trim((string) $account->signature);
+
+            if ($signature !== '') {
+                $signatures[(int) $account->id] = $signature;
+            }
+        }
+
+        return $signatures;
     }
 
     protected function extractAddress(string $formatted): ?string

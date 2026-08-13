@@ -36,6 +36,7 @@ class MailAccount extends Model
         'user_id',
         'email_address',
         'display_name',
+        'signature',
         'color',
         'provider',
         'imap_host',
