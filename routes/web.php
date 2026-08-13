@@ -10,6 +10,7 @@ use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\SenderController;
 use App\Http\Controllers\TriageController;
 use App\Services\Mail\GraphMailSyncService;
 use App\Services\Mail\ImapSyncService;
@@ -52,6 +53,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/emails/bulk', [InboxController::class, 'bulk'])->name('inbox.bulk');
     Route::get('/api/unread-count', [InboxController::class, 'unreadCount'])->name('inbox.unreadCount');
     Route::get('/api/new-emails', [InboxController::class, 'newEmails'])->name('inbox.newEmails');
+
+    Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
+    Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');
 
     Route::get('/attachments/{attachment}', [EmailAttachmentController::class, 'show'])->name('attachments.download');
 

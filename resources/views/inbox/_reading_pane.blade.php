@@ -13,10 +13,20 @@
             @endif
         </h2>
         <div class="rp-chips">
-            <div class="chip">
-                <span class="dot" style="background:{{ $email->mailAccount->color }}">{{ $rpInitials }}</span>
-                {{ $email->from_name ?: $email->from_address }}
-            </div>
+            {{-- The sender is a link to everything they have sent, which is
+                 usually the question worth asking about them (ZERO-122). --}}
+            @if ($email->from_address)
+                <a class="chip" href="{{ route('sender.show', ['address' => $email->from_address]) }}"
+                   title="All mail from {{ $email->from_address }}">
+                    <span class="dot" style="background:{{ $email->mailAccount->color }}">{{ $rpInitials }}</span>
+                    {{ $email->from_name ?: $email->from_address }}
+                </a>
+            @else
+                <div class="chip">
+                    <span class="dot" style="background:{{ $email->mailAccount->color }}">{{ $rpInitials }}</span>
+                    {{ $email->from_name ?: $email->from_address }}
+                </div>
+            @endif
             <div class="chip" style="color:var(--text-faint);">via {{ $email->mailAccount->email_address }}</div>
         </div>
         @php
