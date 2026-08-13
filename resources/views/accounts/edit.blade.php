@@ -21,6 +21,15 @@
                     <input type="text" name="display_name" value="{{ old('display_name', $account->display_name) }}">
                 </div>
 
+                <div class="field">
+                    <label>Signature</label>
+                    <textarea name="signature" rows="4" placeholder="Appended when you compose from this account">{{ old('signature', $account->signature) }}</textarea>
+                    <p style="font-size:12px; color:var(--text-dim); margin:6px 0 0;">
+                        Added to the composer when this account is selected, so you can edit or delete it before sending.
+                        Leave blank for none.
+                    </p>
+                </div>
+
                 @if ($account->usesOAuth())
                     <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 16px;">
                         This account connects via OAuth ({{ ucfirst($account->provider) }}) — its IMAP/SMTP settings and
