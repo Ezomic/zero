@@ -17,7 +17,7 @@
         "laravel/tinker": "^3.0",
         "sabre/vobject": "^5.0",
         "socialiteproviders/microsoft-graph": "^4.1",
-        "thijssensoftware/id-client": "^0.2.0",
+        "thijssensoftware/id-client": "^0.3.0",
         "webklex/laravel-imap": "^6.2"
     },
     "require-dev": {
