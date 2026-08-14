@@ -63,6 +63,39 @@
                 <svg class="ic-sm"><use href="#i-mute"/></svg>
             </button>
         </form>
+        {{-- Local to Zero: IMAP has no concept of snoozing, and inventing a
+             folder for it would make the message vanish from every other
+             client (ZERO-114). --}}
+        <div class="snooze-menu" x-data="{ open: false }" x-on:keydown.escape="open = false">
+            <button type="button" class="icon-btn {{ $email->snoozed_until ? 'active' : '' }}"
+                    x-on:click="open = ! open" :aria-expanded="open"
+                    title="Snooze: hide it here until later, nothing changes on the server">
+                <svg class="ic-sm"><use href="#i-calendar"/></svg>
+            </button>
+            <div class="snooze-pop" x-show="open" x-cloak x-on:click.outside="open = false">
+                <form method="POST" action="{{ route('inbox.snooze', $email) }}">
+                    @csrf
+                    @foreach (\App\Support\SnoozePresets::options() as $key => $label)
+                        <button class="snooze-opt" name="preset" value="{{ $key }}">
+                            {{ $label }}
+                            <span>{{ \App\Support\SnoozePresets::resolve($key)?->format('D H:i') }}</span>
+                        </button>
+                    @endforeach
+                    <label class="snooze-at">
+                        <span>Or pick a time</span>
+                        <input type="datetime-local" name="until">
+                    </label>
+                    <button class="btn sm ghost" style="width:100%;">Snooze</button>
+                </form>
+                @if ($email->snoozed_until)
+                    <form method="POST" action="{{ route('inbox.unsnooze', $email) }}" style="margin-top:6px;">
+                        @csrf @method('DELETE')
+                        <button class="btn sm ghost" style="width:100%;">Unsnooze</button>
+                    </form>
+                @endif
+                <p class="snooze-note">Only in Zero. The message stays where it is on the mail server.</p>
+            </div>
+        </div>
         <form method="POST" action="{{ route('inbox.markUnread', $email) }}">
             @csrf
             <button class="icon-btn" title="Mark unread"><svg class="ic-sm"><use href="#i-check"/></svg></button>

@@ -49,9 +49,15 @@ class ThreadMessageDisplayTest extends TestCase
 
         $html = $this->actingAs($this->user)->get(route('inbox.show', $newest))->assertOk()->getContent();
 
-        // Two collapsed, one open — read off the Alpine state each card carries.
-        $this->assertSame(2, substr_count($html, 'x-data="{ open: false }"'));
-        $this->assertSame(1, substr_count($html, 'x-data="{ open: true }"'));
+        // Two collapsed, one open, read off the Alpine state each card carries.
+        // Matched together with the msg-collapsed binding rather than on the
+        // x-data alone: the pane has other collapsible controls, and counting
+        // a bare open:false across the whole page counts those too.
+        $collapsed = 'x-data="{ open: false }" :class="{ \'msg-collapsed\': ! open }"';
+        $expanded = 'x-data="{ open: true }" :class="{ \'msg-collapsed\': ! open }"';
+
+        $this->assertSame(2, substr_count($html, $collapsed));
+        $this->assertSame(1, substr_count($html, $expanded));
     }
 
     public function test_a_collapsed_message_still_carries_its_snippet(): void

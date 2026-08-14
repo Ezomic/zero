@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\UnsubscribeOptions;
+use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -48,6 +49,7 @@ class Email extends Model
         'body_text',
         'is_read',
         'is_starred',
+        'snoozed_until',
         'is_archived',
         'is_deleted',
         'has_attachments',
@@ -63,7 +65,36 @@ class Email extends Model
         'is_deleted' => 'boolean',
         'has_attachments' => 'boolean',
         'sent_at' => 'datetime',
+        'snoozed_until' => 'datetime',
     ];
+
+    /**
+     * Hides conversations put off until later, and is the one definition of
+     * what "still snoozed" means.
+     *
+     * The comparison is against the stored time rather than against the
+     * column being null, so a conversation whose moment has passed is back in
+     * the inbox even if the sweep that clears the column has not run yet. A
+     * missed run delays the tidying up, never the mail (ZERO-114).
+     *
+     * @param  Builder<Email>  $query
+     */
+    #[Scope]
+    protected function notSnoozed(Builder $query): void
+    {
+        $query->where(function (Builder $group): void {
+            $group->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
+        });
+    }
+
+    /**
+     * @param  Builder<Email>  $query
+     */
+    #[Scope]
+    protected function snoozed(Builder $query): void
+    {
+        $query->whereNotNull('snoozed_until')->where('snoozed_until', '>', now());
+    }
 
     /** @return BelongsTo<MailAccount, $this> */
     public function mailAccount(): BelongsTo

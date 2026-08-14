@@ -19,6 +19,7 @@
         ->where('is_read', false)
         ->where('is_archived', false)
         ->where('is_deleted', false)
+        ->notSnoozed()
         ->selectRaw('mail_account_id, folder, COUNT(*) as c')
         ->groupBy('mail_account_id', 'folder')
         ->get()
@@ -41,6 +42,13 @@
         ->where('is_starred', true)
         ->where('is_deleted', false)
         ->count();
+
+    $snoozedCount = Email::query()
+        ->whereIn('mail_account_id', $navAccounts->pluck('id'))
+        ->where('is_deleted', false)
+        ->snoozed()
+        ->distinct()
+        ->count('thread_id');
 
     // Unlike the counts above, one of these is a full FTS query rather than an
     // indexed column filter, so they come back as one cached map instead of a
@@ -75,6 +83,10 @@
         </a>
         <a href="{{ route('inbox.index', ['archived' => 1]) }}" class="nav-item {{ $isArchived ? 'active' : '' }}">
             <svg class="ic"><use href="#i-archive"/></svg>Archived
+        </a>
+        <a href="{{ route('snoozed.index') }}" class="nav-item {{ request()->routeIs('snoozed.index') ? 'active' : '' }}">
+            <svg class="ic"><use href="#i-calendar"/></svg>Snoozed
+            @if ($snoozedCount > 0)<span class="count">{{ $snoozedCount > 99 ? '99+' : $snoozedCount }}</span>@endif
         </a>
         <a href="{{ route('attachments.index') }}" class="nav-item {{ request()->routeIs('attachments.index') ? 'active' : '' }}">
             <svg class="ic"><use href="#i-clip"/></svg>Attachments

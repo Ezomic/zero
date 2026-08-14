@@ -12,6 +12,7 @@ use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\SavedSearchController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SenderController;
+use App\Http\Controllers\SnoozeController;
 use App\Http\Controllers\TriageController;
 use App\Http\Controllers\UnsubscribeController;
 use App\Services\Mail\GraphMailSyncService;
@@ -66,6 +67,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');
+
+    Route::get('/snoozed', [SnoozeController::class, 'index'])->name('snoozed.index');
+    Route::post('/emails/{email}/snooze', [SnoozeController::class, 'store'])->name('inbox.snooze');
+    Route::delete('/emails/{email}/snooze', [SnoozeController::class, 'destroy'])->name('inbox.unsnooze');
 
     Route::get('/attachments', [EmailAttachmentController::class, 'index'])->name('attachments.index');
     Route::get('/attachments/{attachment}', [EmailAttachmentController::class, 'show'])->name('attachments.download');

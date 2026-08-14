@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Mail\ImapClientFactory;
 use App\Services\Mail\ImapSyncService;
 use App\Services\Mail\OAuthTokenRefresher;
+use App\Support\SnoozedThreads;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,7 +67,7 @@ class ImapSyncServiceStoreMessageTest extends TestCase
     /**
      * @param  array<string, string>  $headers
      */
-    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null, bool $hasDate = true, array $headers = []): Message
+    private function makeMessage(int $uid, bool $isRead, string $subject = 'Test subject', ?string $messageId = null, bool $hasDate = true, array $headers = [], ?string $inReplyTo = null): Message
     {
         $message = Mockery::mock(Message::class);
         // A real Header parsed from raw text rather than a stub, so header
@@ -89,7 +90,18 @@ class ImapSyncServiceStoreMessageTest extends TestCase
                 return $this->messageId;
             }
         });
-        $message->shouldReceive('getInReplyTo')->andReturn(null);
+        // Wrapped the same way getMessageId() is: threadingHeaders() calls
+        // ->toString() on it, and a bare string would throw into the catch
+        // and silently thread the message as a standalone.
+        $message->shouldReceive('getInReplyTo')->andReturn($inReplyTo === null ? null : new class($inReplyTo)
+        {
+            public function __construct(private string $inReplyTo) {}
+
+            public function toString(): string
+            {
+                return $this->inReplyTo;
+            }
+        });
         $message->shouldReceive('getReferences')->andReturn(null);
         $message->shouldReceive('getFrom')->andReturn([new Address((object) ['mail' => 'sender@example.com', 'personal' => 'Sender Name'])]);
         $message->shouldReceive('getTo')->andReturn(null);
@@ -158,6 +170,62 @@ class ImapSyncServiceStoreMessageTest extends TestCase
             'list_unsubscribe' => null,
             'list_unsubscribe_post' => null,
         ]);
+    }
+
+    /**
+     * ZERO-114 decided a reply brings a snoozed conversation back early: a
+     * snooze usually means "not until I hear back", and a reply is exactly
+     * that. Exercised through storeMessage() rather than by repeating what it
+     * does, since the decision lives there.
+     */
+    public function test_a_reply_wakes_a_snoozed_conversation(): void
+    {
+        $existing = Email::factory()->create([
+            'mail_account_id' => $this->account->id,
+            // storeMessage() derives thread_id from the referenced
+            // message-id itself, so the original's thread id is its own id.
+            'thread_id' => '<original@example.com>',
+            'folder' => 'INBOX',
+            'uid' => '900',
+            'message_id' => '<original@example.com>',
+            'snoozed_until' => now()->addWeek(),
+        ]);
+
+        SnoozedThreads::forgetMemo();
+
+        $message = $this->makeMessage(
+            uid: 901,
+            isRead: false,
+            messageId: '<reply@example.com>',
+            inReplyTo: '<original@example.com>',
+        );
+
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: false);
+
+        $this->assertNull($existing->fresh()?->snoozed_until, 'The original message should be back in the inbox.');
+        $this->assertNull(
+            Email::where('uid', '901')->value('snoozed_until'),
+            'The reply itself should not arrive snoozed.',
+        );
+    }
+
+    public function test_a_reply_on_an_unsnoozed_thread_changes_nothing_elsewhere(): void
+    {
+        $elsewhere = Email::factory()->create([
+            'mail_account_id' => $this->account->id,
+            'thread_id' => 'thread-other',
+            'folder' => 'INBOX',
+            'uid' => '910',
+            'snoozed_until' => now()->addWeek(),
+        ]);
+
+        SnoozedThreads::forgetMemo();
+
+        $message = $this->makeMessage(uid: 911, isRead: false, messageId: '<unrelated@example.com>');
+
+        $this->service->callStoreMessage($this->account, $this->folder, 'INBOX', $message, broadcastNew: false);
+
+        $this->assertNotNull($elsewhere->fresh()?->snoozed_until);
     }
 
     public function test_does_not_duplicate_an_existing_message(): void

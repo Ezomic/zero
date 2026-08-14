@@ -27,3 +27,11 @@ Schedule::command('mail:drain-mirrors')->everyFiveMinutes()->withoutOverlapping(
 // quarter hour rather than every five minutes to stay out of the way of the
 // two above, and stops itself after 60s whether or not it finished.
 Schedule::command('mail:backfill-bodies')->everyFifteenMinutes()->withoutOverlapping();
+
+// Clears expired snoozes (ZERO-114). Not what makes snooze work: the inbox and
+// triage queries already treat a snooze whose moment has passed as expired, so
+// a conversation returns at its chosen time whether or not this has run. This
+// clears the column, which keeps the Snoozed view honest, and because it
+// selects on the same condition it clears, a missed run catches up on
+// everything due rather than skipping it.
+Schedule::command('mail:wake-snoozed')->everyFiveMinutes()->withoutOverlapping();
