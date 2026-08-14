@@ -13,6 +13,7 @@ use App\Models\MutedThread;
 use App\Models\PendingMirrorAction;
 use App\Support\MimeHeader;
 use App\Support\SearchableBody;
+use App\Support\SnoozedThreads;
 use App\Support\StoredAttachmentName;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -170,6 +171,7 @@ class ImapSyncService
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
         MutedThread::forgetMemo();
+        SnoozedThreads::forgetMemo();
 
         $capturingImapTraffic = $this->beginImapTrafficCapture($account);
 
@@ -1167,6 +1169,20 @@ class ImapSyncService
             'has_attachments' => false,
             'sent_at' => $sentAt,
         ]);
+
+        // A reply is usually exactly the thing a snooze was waiting for, so
+        // it brings the conversation back rather than leaving the new message
+        // visible while its siblings stay hidden (ZERO-114). The trade-off is
+        // that snooze is weaker on a noisy thread; that is the documented
+        // choice, and unsnoozing by hand is one click.
+        if ($folderName === 'INBOX' && SnoozedThreads::isSnoozed((int) $account->id, $threadId)) {
+            Email::query()
+                ->where('mail_account_id', $account->id)
+                ->where('thread_id', $threadId)
+                ->update(['snoozed_until' => null]);
+
+            SnoozedThreads::forget((int) $account->id, (string) $threadId);
+        }
 
         if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
             broadcast(new NewEmailArrived(

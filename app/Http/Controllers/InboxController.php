@@ -449,6 +449,7 @@ class InboxController extends Controller
         $base = Email::query()
             ->whereIn('mail_account_id', $accountIds)
             ->where('is_deleted', false)
+            ->notSnoozed()
             ->where('id', '>', $since);
 
         if ($showArchived) {
@@ -503,6 +504,7 @@ class InboxController extends Controller
             ->where('is_read', false)
             ->where('is_archived', false)
             ->where('is_deleted', false)
+            ->notSnoozed()
             ->count();
 
         return response()->json(['unread' => $total]);

@@ -11,6 +11,7 @@ use App\Models\MailFolder;
 use App\Models\MutedThread;
 use App\Support\Payload;
 use App\Support\SearchableBody;
+use App\Support\SnoozedThreads;
 use App\Support\StoredAttachmentName;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
@@ -81,6 +82,7 @@ class GraphMailSyncService
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
         MutedThread::forgetMemo();
+        SnoozedThreads::forgetMemo();
 
         try {
             $accessToken = $this->tokenRefresher->freshAccessToken($account);
@@ -470,6 +472,17 @@ class GraphMailSyncService
             'has_attachments' => $message['hasAttachments'] ?? false,
             'sent_at' => $sentAt,
         ]);
+
+        // Same reasoning as the IMAP path: a reply is what the snooze was
+        // usually waiting for (ZERO-114).
+        if ($folderName === 'INBOX' && SnoozedThreads::isSnoozed((int) $account->id, $threadId)) {
+            Email::query()
+                ->where('mail_account_id', $account->id)
+                ->where('thread_id', $threadId)
+                ->update(['snoozed_until' => null]);
+
+            SnoozedThreads::forget((int) $account->id, (string) $threadId);
+        }
 
         if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
             broadcast(new NewEmailArrived(

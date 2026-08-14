@@ -52,6 +52,9 @@ class TriageController extends Controller
             ->where('folder', 'INBOX')
             ->where('is_archived', false)
             ->where('is_deleted', false)
+            // Snooze is the durable form of the skip below: skip is session
+            // scoped and forgotten on the next visit (ZERO-114).
+            ->notSnoozed()
             ->whereNotIn('thread_id', $skippedThreadIds);
 
         $nextThreadId = (clone $base())->reorder()->oldest('sent_at')->value('thread_id');

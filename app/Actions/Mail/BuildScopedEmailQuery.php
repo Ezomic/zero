@@ -26,7 +26,10 @@ class BuildScopedEmailQuery
     {
         $base = Email::query()
             ->whereIn('mail_account_id', $user->mailAccounts()->select('id'))
-            ->where('is_deleted', false);
+            ->where('is_deleted', false)
+            // A conversation put off until later is out of every list except
+            // the Snoozed view, which asks for it by name (ZERO-114).
+            ->notSnoozed();
 
         if ($scope->starred) {
             // Starred cuts across folders the way archived does, so it does
