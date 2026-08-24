@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "29877dc0dbcb79b011ed49510e903b7c",
+    "content-hash": "77aaf368c35c3290b3470e06c2a45dcf",
     "packages": [
         {
             "name": "brick/math",
@@ -8359,16 +8359,16 @@
         },
         {
             "name": "thijssensoftware/id-client",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/Ezomic/id-client.git",
-                "reference": "1cd8e83b57c8644ffb5f87be015dfb7b9a7b3f6b"
+                "url": "git@github.com:Ezomic/id-client.git",
+                "reference": "6af32f46628ef973436da73ba6f7d1c84a017beb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/id-client/zipball/1cd8e83b57c8644ffb5f87be015dfb7b9a7b3f6b",
-                "reference": "1cd8e83b57c8644ffb5f87be015dfb7b9a7b3f6b",
+                "url": "https://api.github.com/repos/Ezomic/id-client/zipball/6af32f46628ef973436da73ba6f7d1c84a017beb",
+                "reference": "6af32f46628ef973436da73ba6f7d1c84a017beb",
                 "shasum": ""
             },
             "require": {
@@ -8411,11 +8411,7 @@
                 "proprietary"
             ],
             "description": "Client for signing in workflow apps against Thijssensoftware ID (SSO).",
-            "support": {
-                "source": "https://github.com/Ezomic/id-client/tree/v0.2.0",
-                "issues": "https://github.com/Ezomic/id-client/issues"
-            },
-            "time": "2026-08-07T20:13:26+00:00"
+            "time": "2026-08-13T02:58:39+00:00"
         },
         {
             "name": "tijsverkoyen/css-to-inline-styles",
