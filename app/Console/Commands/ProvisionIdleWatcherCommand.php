@@ -10,21 +10,20 @@ class ProvisionIdleWatcherCommand extends Command
 {
     protected $signature = 'mail:idle:provision {account : MailAccount ID to start watching}';
 
-    protected $description = 'Set up the launchd/supervisor process that holds an IMAP IDLE connection for an account';
+    protected $description = 'Set up the launchd job (local) or systemd unit (production) that holds an IMAP IDLE connection for an account';
 
-    /** Where production's supervisor programs for this app actually live. */
-    public const SUPERVISOR_CONF = '/etc/supervisor/conf.d/zero.conf';
+    /** Where production's workers are declared: one entry per worker in Ezomic/infra. */
+    public const APPS_FILE = 'ansible/group_vars/all/apps.yml';
 
-    /** Program names in that file are zero-*, and scripts/deploy.sh restarts
-     *  them by name — an idle watcher called anything else is never restarted. */
+    /** A worker named idle-<id> becomes zero-idle-<id>.service, which is what
+     *  app-deploy restarts after a release. Anything else is never restarted. */
     public const PROGRAM_PREFIX = 'zero-idle-';
 
     /**
      * The counterpart to mail:idle:deprovision, and deliberately manual in the
-     * same way (see THI-239). On production the idle watchers share
-     * zero.conf with zero-queue, zero-queue-flags, zero-scheduler and
-     * zero-reverb, so rewriting that file from the app risks taking the other
-     * four down on a bad edit; there this only prints the exact steps.
+     * same way (see THI-239). On production the server is config as code: an
+     * app cannot edit the playbook that defines it, so this prints the exact
+     * entry to add and the command that applies it.
      */
     public function handle(): int
     {
@@ -98,51 +97,35 @@ class ProvisionIdleWatcherCommand extends Command
     {
         $program = self::PROGRAM_PREFIX.$account->id;
 
-        $this->line('On production, idle watchers live in '.self::SUPERVISOR_CONF.' alongside zero-queue, zero-queue-flags, zero-scheduler and zero-reverb.');
+        $this->line('On production the watchers are systemd units generated from Ezomic/infra, alongside zero-queue, zero-queue-flags, zero-schedule and zero-reverb.');
         $this->newLine();
-        $this->line('1. Add this block to that file:');
+        $this->line('1. Add this worker to the zero entry in '.self::APPS_FILE.':');
         $this->newLine();
 
-        foreach ($this->supervisorBlock($account) as $line) {
+        foreach ($this->workerEntry($account) as $line) {
             $this->line($line);
         }
 
         $this->newLine();
-        $this->line('2. sudo supervisorctl reread');
-        $this->line('3. sudo supervisorctl update');
+        $this->line('2. ansible-playbook site.yml --tags apps');
         $this->newLine();
-        $this->line("Then add {$program} to the restart list in scripts/deploy.sh, or it keeps");
-        $this->line('serving the previous release after every deploy.');
-        $this->newLine();
-        $this->line('The supervisorctl commands are already passwordless for the deploy user — see `sudo -l`.');
+        $this->line("That renders {$program}.service and starts it. app-deploy restarts every");
+        $this->line('zero-*.service after a release, so it always runs the code that is live.');
 
         return self::SUCCESS;
     }
 
     /**
-     * Mirrors the shape of the blocks already in zero.conf rather than
-     * inventing one: same process_name, same stop/kill group settings, and a
-     * log path under the app's own storage/logs like its siblings.
+     * The shape apps.yml already uses for zero's other workers: a name, and the
+     * artisan arguments to run. Everything else (user, sandbox, restarts, log
+     * handling) comes from the worker template in the playbook.
      *
      * @return list<string>
      */
-    protected function supervisorBlock(MailAccount $account): array
+    protected function workerEntry(MailAccount $account): array
     {
-        $program = self::PROGRAM_PREFIX.$account->id;
-
         return [
-            "[program:{$program}]",
-            'process_name=%(program_name)s_%(process_num)02d',
-            'command=php '.base_path('artisan')." mail:idle {$account->id}",
-            'autostart=true',
-            'autorestart=true',
-            'stopasgroup=true',
-            'killasgroup=true',
-            'user=deploy',
-            'numprocs=1',
-            'redirect_stderr=true',
-            'stdout_logfile='.base_path("storage/logs/idle-{$account->id}.log"),
-            'stopwaitsecs=60',
+            '      - {name: idle-'.$account->id.', artisan: "mail:idle '.$account->id.'"}',
         ];
     }
 
