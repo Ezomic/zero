@@ -9,15 +9,17 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.3",
         "laravel/framework": "^13.8",
         "laravel/passkeys": "^0.2.1",
         "laravel/reverb": "^1.10",
         "laravel/socialite": "^5.28",
         "laravel/tinker": "^3.0",
+        "php": "^8.3",
         "sabre/vobject": "^5.0",
         "socialiteproviders/microsoft-graph": "^4.1",
+        "thijssensoftware/flare-client": "^0.3.4",
         "thijssensoftware/id-client": "^0.3.0",
+        "thijssensoftware/snag-client": "^0.1.0",
         "webklex/laravel-imap": "^6.2"
     },
     "require-dev": {
@@ -100,6 +102,18 @@
             "name": "id-client",
             "type": "vcs",
             "url": "https://github.com/Ezomic/id-client.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/Ezomic/flare-client.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/Ezomic/snag-client.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/Ezomic/request-id.git"
         }
     ]
 }
