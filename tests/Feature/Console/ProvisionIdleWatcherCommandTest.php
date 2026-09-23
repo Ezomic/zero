@@ -173,17 +173,17 @@ class ProvisionIdleWatcherCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
-    public function test_on_linux_it_prints_the_supervisor_steps_without_touching_the_filesystem(): void
+    public function test_on_linux_it_prints_the_playbook_steps_without_touching_the_filesystem(): void
     {
         Process::fake();
         $this->pretendOs('Linux');
         $account = $this->account();
 
         $this->artisan('mail:idle:provision', ['account' => $account->id])
-            ->expectsOutputToContain("[program:zero-idle-{$account->id}]")
-            ->expectsOutputToContain('/etc/supervisor/conf.d/zero.conf')
-            ->expectsOutputToContain('supervisorctl reread')
-            ->expectsOutputToContain('supervisorctl update')
+            ->expectsOutputToContain("name: idle-{$account->id}")
+            ->expectsOutputToContain('ansible/group_vars/all/apps.yml')
+            ->expectsOutputToContain('ansible-playbook site.yml --tags apps')
+            ->doesntExpectOutputToContain('supervisorctl')
             ->assertExitCode(0);
 
         $this->assertFileDoesNotExist($this->plistPath($account));
@@ -192,39 +192,37 @@ class ProvisionIdleWatcherCommandTest extends TestCase
 
     /**
      * The instructions once named a mail.conf that no longer exists, with
-     * mail-idle-* programs the deploy script would never restart (ZERO-100).
-     * Both halves are pinned here so they cannot drift apart again.
+     * mail-idle-* programs no deploy would ever restart (ZERO-100). The unit
+     * name is what app-deploy restarts now, so the worker name has to produce
+     * it: idle-<id> in the playbook becomes zero-idle-<id>.service.
      */
-    public function test_the_printed_program_name_is_one_the_deploy_script_restarts(): void
+    public function test_the_printed_worker_name_produces_the_unit_app_deploy_restarts(): void
     {
         Process::fake();
         $this->pretendOs('Linux');
         $account = $this->account();
 
         $this->artisan('mail:idle:provision', ['account' => $account->id])
-            ->expectsOutputToContain('zero-idle-')
+            ->expectsOutputToContain("name: idle-{$account->id}")
+            ->expectsOutputToContain(ProvisionIdleWatcherCommand::PROGRAM_PREFIX.$account->id.'.service')
             ->doesntExpectOutputToContain('mail.conf')
             ->doesntExpectOutputToContain('mail-idle-')
             ->assertExitCode(0);
-
-        $deployScript = (string) file_get_contents(base_path('scripts/deploy.sh'));
-        $this->assertStringContainsString('zero-idle-', $deployScript);
     }
 
-    public function test_the_printed_block_matches_the_shape_of_the_existing_programs(): void
+    public function test_the_printed_entry_matches_the_shape_apps_yml_uses(): void
     {
         Process::fake();
         $this->pretendOs('Linux');
         $account = $this->account();
 
-        // Same knobs the sibling programs in zero.conf are configured with,
-        // so a watcher added from this output behaves like the others.
+        // The same one-line worker shape as zero's siblings in apps.yml. Everything
+        // else (user, sandbox, restarts, logging) comes from the playbook's template,
+        // which is why this no longer prints a process block at all.
         $this->artisan('mail:idle:provision', ['account' => $account->id])
-            ->expectsOutputToContain('process_name=%(program_name)s_%(process_num)02d')
-            ->expectsOutputToContain('command=php '.base_path('artisan')." mail:idle {$account->id}")
-            ->expectsOutputToContain('stopasgroup=true')
-            ->expectsOutputToContain('user=deploy')
-            ->expectsOutputToContain(base_path("storage/logs/idle-{$account->id}.log"))
+            ->expectsOutputToContain('- {name: idle-'.$account->id.', artisan: "mail:idle '.$account->id.'"}')
+            ->doesntExpectOutputToContain('process_name=')
+            ->doesntExpectOutputToContain('user=deploy')
             ->assertExitCode(0);
     }
 }
