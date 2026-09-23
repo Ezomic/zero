@@ -205,8 +205,9 @@ a launchd agent.
 **`mail:idle:provision {account}`** (`ProvisionIdleWatcherCommand`)
 
 Sets up the watcher process for an account. On macOS it writes the launchd
-plist and loads it; on production it prints the supervisor block and the
-`supervisorctl` commands rather than editing the shared `zero.conf` itself.
+plist and loads it; on production it prints what the watcher's systemd unit
+should be, because the units are generated from `Ezomic/infra` and the command
+does not edit the box itself.
 Refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones;
 re-running for an already-provisioned account is a no-op.
 `mail:idle:deprovision {account}` is the counterpart.
