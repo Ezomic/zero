@@ -11,15 +11,16 @@ use Tests\TestCase;
  */
 class DeprovisionIdleWatcherCommandTest extends TestCase
 {
-    public function test_it_names_the_supervisor_file_that_exists_on_production(): void
+    public function test_it_names_the_playbook_entry_and_unit_that_exist_on_production(): void
     {
         if (PHP_OS_FAMILY === 'Darwin') {
             $this->markTestSkipped('The production branch only runs off Darwin.');
         }
 
         $this->artisan('mail:idle:deprovision', ['id' => 10])
-            ->expectsOutputToContain('/etc/supervisor/conf.d/zero.conf')
-            ->expectsOutputToContain('[program:zero-idle-10]')
+            ->expectsOutputToContain('ansible/group_vars/all/apps.yml')
+            ->expectsOutputToContain('zero-idle-10.service')
+            ->doesntExpectOutputToContain('supervisorctl')
             ->doesntExpectOutputToContain('mail.conf')
             ->doesntExpectOutputToContain('mail-idle-')
             ->assertExitCode(0);

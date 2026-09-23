@@ -9,7 +9,7 @@ class DeprovisionIdleWatcherCommand extends Command
 {
     protected $signature = 'mail:idle:deprovision {id : MailAccount ID whose idle watcher should be removed}';
 
-    protected $description = 'Remove the launchd/supervisor process watching a deleted or deactivated MailAccount';
+    protected $description = 'Remove the launchd job (local) or systemd unit (production) watching a deleted or deactivated MailAccount';
 
     // Run this by hand right after deleting an account — it's a deliberate
     // manual step (see THI-239), not wired into account deletion itself. On
@@ -26,18 +26,15 @@ class DeprovisionIdleWatcherCommand extends Command
         }
 
         $program = ProvisionIdleWatcherCommand::PROGRAM_PREFIX.$id;
-        $conf = ProvisionIdleWatcherCommand::SUPERVISOR_CONF;
+        $appsFile = ProvisionIdleWatcherCommand::APPS_FILE;
 
-        $this->line("On production, {$program} is defined in {$conf} alongside zero-queue, zero-queue-flags, zero-scheduler and zero-reverb.");
+        $this->line("On production, {$program}.service is generated from Ezomic/infra alongside zero-queue, zero-queue-flags, zero-schedule and zero-reverb.");
         $this->newLine();
-        $this->line("1. Remove the [program:{$program}] block from that file.");
-        $this->line('2. sudo supervisorctl reread');
-        $this->line('3. sudo supervisorctl update');
+        $this->line("1. Remove the idle-{$id} worker from the zero entry in {$appsFile}.");
+        $this->line('2. ansible-playbook site.yml --tags apps');
         $this->newLine();
-        $this->line("Then drop {$program} from the restart list in scripts/deploy.sh, or the");
-        $this->line('next deploy fails trying to restart a program that no longer exists.');
-        $this->newLine();
-        $this->line('The supervisorctl commands are already passwordless for the deploy user — see `sudo -l`.');
+        $this->line('The playbook renders units, it does not remove them, so also stop and delete the');
+        $this->line("leftover unit on the server: systemctl disable --now {$program} && rm /etc/systemd/system/{$program}.service && systemctl daemon-reload");
 
         return self::SUCCESS;
     }
