@@ -20,6 +20,17 @@ class User extends Authenticatable implements PasskeyUser
     use HasFactory, Notifiable, PasskeyAuthenticatable;
 
     /**
+     * Users signed in through ID have no password, and since Laravel 13.32 the
+     * remember-me cookie only restores a user whose password is a string.
+     */
+    public function getAuthPassword(): string
+    {
+        $password = $this->getAttribute($this->getAuthPasswordName());
+
+        return is_string($password) ? $password : '';
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
