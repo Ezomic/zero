@@ -58,8 +58,9 @@ class IdleMailboxCommand extends Command
         // IDLE blocks until the server pushes a notification (new message,
         // flag change, expunge). We dispatch a sync job and immediately
         // re-enter IDLE — the sync handles deduplication, so triggering it
-        // on any IDLE event is safe. launchd/supervisor restarts us if the
-        // connection drops or the server kicks us out after ~30 min.
+        // on any IDLE event is safe. launchd (local) or systemd (production)
+        // restarts us if the connection drops or the server kicks us out
+        // after ~30 min.
         //
         // Folder::idle() runs its own internal while(true) loop and only
         // ever returns via an exception, so re-checking the account once at
