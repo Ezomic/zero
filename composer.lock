@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6492d63c9e875cf6b93ad028c8332bd4",
+    "content-hash": "b6300bcd9d206b4fdb66eeca20d78bea",
     "packages": [
         {
             "name": "brick/math",
@@ -8419,16 +8419,16 @@
         },
         {
             "name": "thijssensoftware/flare-client",
-            "version": "0.3.4",
+            "version": "0.3.5",
             "source": {
                 "type": "git",
                 "url": "git@github.com:Ezomic/flare-client.git",
-                "reference": "bd766d6240f4e89b03294b6002f884699bdc6861"
+                "reference": "c12bba8d448ddc79623b420ec1596eb963964c48"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/bd766d6240f4e89b03294b6002f884699bdc6861",
-                "reference": "bd766d6240f4e89b03294b6002f884699bdc6861",
+                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/c12bba8d448ddc79623b420ec1596eb963964c48",
+                "reference": "c12bba8d448ddc79623b420ec1596eb963964c48",
                 "shasum": ""
             },
             "require": {
@@ -8489,20 +8489,20 @@
                 "proprietary"
             ],
             "description": "Reports exceptions, failed jobs and failed scheduled tasks to flare.",
-            "time": "2026-08-13T15:48:31+00:00"
+            "time": "2026-09-28T18:38:02+00:00"
         },
         {
             "name": "thijssensoftware/id-client",
-            "version": "0.3.1",
+            "version": "0.4.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Ezomic/id-client.git",
-                "reference": "af67db401b6e6e7e473a9edbb0dc41f5fe64cc9a"
+                "reference": "941119bdea6efd424e88949fb69efa824e76454d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/id-client/zipball/af67db401b6e6e7e473a9edbb0dc41f5fe64cc9a",
-                "reference": "af67db401b6e6e7e473a9edbb0dc41f5fe64cc9a",
+                "url": "https://api.github.com/repos/Ezomic/id-client/zipball/941119bdea6efd424e88949fb69efa824e76454d",
+                "reference": "941119bdea6efd424e88949fb69efa824e76454d",
                 "shasum": ""
             },
             "require": {
@@ -8546,10 +8546,10 @@
             ],
             "description": "Client for signing in workflow apps against Thijssensoftware ID (SSO).",
             "support": {
-                "source": "https://github.com/Ezomic/id-client/tree/v0.3.1",
+                "source": "https://github.com/Ezomic/id-client/tree/v0.4.1",
                 "issues": "https://github.com/Ezomic/id-client/issues"
             },
-            "time": "2026-09-27T18:52:06+00:00"
+            "time": "2026-09-28T21:50:45+00:00"
         },
         {
             "name": "thijssensoftware/request-id",

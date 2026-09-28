@@ -18,7 +18,7 @@
         "sabre/vobject": "^5.0",
         "socialiteproviders/microsoft-graph": "^4.1",
         "thijssensoftware/flare-client": "^0.3.4",
-        "thijssensoftware/id-client": "^0.3.0",
+        "thijssensoftware/id-client": "^0.4.1",
         "thijssensoftware/snag-client": "^0.1.0",
         "webklex/laravel-imap": "^6.2"
     },
