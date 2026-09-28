@@ -11,12 +11,11 @@ class DeprovisionIdleWatcherCommand extends Command
 
     protected $description = 'Remove the launchd job (local) or systemd unit (production) watching a deleted or deactivated MailAccount';
 
-    // Run this by hand right after deleting an account — it's a deliberate
+    // Run this by hand right after deleting an account: it's a deliberate
     // manual step (see THI-239), not wired into account deletion itself. On
-    // production, zero-idle-{id} lives alongside zero-queue/zero-queue-flags/
-    // zero-scheduler/zero-reverb in the same zero.conf, so rewriting
-    // that file automatically from a web request risks taking down the other
-    // three workers on a bad edit. This only prints the exact steps instead.
+    // production, zero-idle-{id} is a systemd unit generated from zero's entry
+    // in Ezomic/infra, which the app cannot edit, so this only prints the
+    // exact steps instead.
     public function handle(): int
     {
         $id = $this->argument('id');

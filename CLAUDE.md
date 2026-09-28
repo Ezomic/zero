@@ -198,18 +198,19 @@ self-recover. Run by the scheduler every 5 minutes.
 
 Opens a persistent IMAP IDLE connection on the account's INBOX. When the server
 pushes a notification (new message, flag change, expunge), dispatches
-`SyncMailAccountJob`. launchd restarts this command if the connection drops
-(servers terminate idle connections after ~30 min). Only active accounts have
-a launchd agent.
+`SyncMailAccountJob`. launchd (local) or systemd (production) restarts this
+command if the connection drops (servers terminate idle connections after
+~30 min). Only active accounts get a watcher.
 
 **`mail:idle:provision {account}`** (`ProvisionIdleWatcherCommand`)
 
 Sets up the watcher process for an account. On macOS it writes the launchd
-plist and loads it; on production it prints what the watcher's systemd unit
-should be, because the units are generated from `Ezomic/infra` and the command
-does not edit the box itself.
+plist and loads it. On production it prints the `idle-{id}` worker entry to add
+to zero's entry in `Ezomic/infra` `ansible/group_vars/all/apps.yml` and the
+`ansible-playbook site.yml --tags apps` command that renders and starts
+`zero-idle-{id}.service`; it never edits the box.
 Refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones;
-re-running for an already-provisioned account is a no-op.
+locally, re-running for an account that already has a plist is a no-op.
 `mail:idle:deprovision {account}` is the counterpart.
 
 ### Calendar invitations

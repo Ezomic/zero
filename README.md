@@ -137,13 +137,13 @@ launchctl load ~/Library/LaunchAgents/nl.thijssensoftware.zero.scheduler.plist
 launchctl unload ~/Library/LaunchAgents/nl.thijssensoftware.zero.scheduler.plist
 ```
 
-### Production — Supervisor + cron
+### Production: systemd units from Ezomic/infra
 
-Run the scheduler via cron and the queue worker under Supervisor:
-
-```
-* * * * * php artisan schedule:run
-```
+Nothing on the server is started by hand. zero's entry in `Ezomic/infra`
+(`ansible/group_vars/all/apps.yml`) generates one systemd unit per process:
+`zero-schedule.timer` runs `schedule:run` every minute, and the queue workers,
+`zero-reverb` and each `zero-idle-{id}` run as services that systemd restarts
+when they exit. `app-deploy` restarts those services after every release.
 
 You can also trigger a manual sync anytime from the Accounts page, or:
 
@@ -183,10 +183,11 @@ php artisan mail:idle:provision {id}
 ```
 
 Locally this writes the launchd plist and loads it. On production it prints
-the `[program:zero-idle-{id}]` block to add to
-`/etc/supervisor/conf.d/zero.conf` plus the `supervisorctl reread`/`update`
-commands, for the same reason the deprovision command does not edit that file
-itself.
+the `idle-{id}` worker entry to add to zero's entry in `Ezomic/infra`
+`ansible/group_vars/all/apps.yml`, plus the `ansible-playbook site.yml --tags apps`
+command that renders and starts `zero-idle-{id}.service`. It never edits the
+server itself: the units are generated from the playbook, which the app cannot
+change.
 
 It refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones,
 and re-running it for an account that already has a plist is a no-op.
@@ -210,11 +211,10 @@ php artisan mail:idle:deprovision {id}
 ```
 
 Locally this unloads and removes the launchd plist for you. On production it
-prints the `[program:zero-idle-{id}]` block to remove from
-`/etc/supervisor/conf.d/zero.conf` plus the `supervisorctl reread`/`update`
-commands to run — it won't edit that file itself, since `zero-queue`,
-`zero-queue-flags`, `zero-scheduler`, and `zero-reverb` are defined in the same file and a bad
-edit could take those down too.
+prints the steps instead: remove the `idle-{id}` worker from zero's entry in
+`ansible/group_vars/all/apps.yml`, run `ansible-playbook site.yml --tags apps`,
+then disable and delete the leftover `zero-idle-{id}.service` on the server,
+because the playbook renders units but never removes them.
 
 ### Outlook OAuth (account 7 — robbin_thijssen@hotmail.nl)
 
