@@ -8419,16 +8419,16 @@
         },
         {
             "name": "thijssensoftware/flare-client",
-            "version": "0.3.5",
+            "version": "0.3.6",
             "source": {
                 "type": "git",
                 "url": "git@github.com:Ezomic/flare-client.git",
-                "reference": "c12bba8d448ddc79623b420ec1596eb963964c48"
+                "reference": "7532d0031572b2e047496d7a512d00580720c443"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/c12bba8d448ddc79623b420ec1596eb963964c48",
-                "reference": "c12bba8d448ddc79623b420ec1596eb963964c48",
+                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/7532d0031572b2e047496d7a512d00580720c443",
+                "reference": "7532d0031572b2e047496d7a512d00580720c443",
                 "shasum": ""
             },
             "require": {
@@ -8489,7 +8489,7 @@
                 "proprietary"
             ],
             "description": "Reports exceptions, failed jobs and failed scheduled tasks to flare.",
-            "time": "2026-09-28T18:38:02+00:00"
+            "time": "2026-09-29T12:22:53+00:00"
         },
         {
             "name": "thijssensoftware/id-client",
@@ -8611,16 +8611,16 @@
         },
         {
             "name": "thijssensoftware/snag-client",
-            "version": "0.1.0",
+            "version": "0.1.1",
             "source": {
                 "type": "git",
                 "url": "git@github.com:Ezomic/snag-client.git",
-                "reference": "0d03249afe5ecf9d706913d7c8e18df5d348e8ee"
+                "reference": "e94c46bb52cb315ba4e78e6f187cde356089dc09"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/snag-client/zipball/0d03249afe5ecf9d706913d7c8e18df5d348e8ee",
-                "reference": "0d03249afe5ecf9d706913d7c8e18df5d348e8ee",
+                "url": "https://api.github.com/repos/Ezomic/snag-client/zipball/e94c46bb52cb315ba4e78e6f187cde356089dc09",
+                "reference": "e94c46bb52cb315ba4e78e6f187cde356089dc09",
                 "shasum": ""
             },
             "require": {
@@ -8665,7 +8665,7 @@
                 "proprietary"
             ],
             "description": "Prints the snag reporter widget into a host app, with the reporter pseudonym and signature computed server-side.",
-            "time": "2026-08-06T14:54:17+00:00"
+            "time": "2026-09-29T12:23:02+00:00"
         },
         {
             "name": "tijsverkoyen/css-to-inline-styles",
