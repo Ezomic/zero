@@ -80,6 +80,8 @@ class ArchiveRuleController extends Controller
     {
         abort_unless($this->currentUser()->mailAccounts()->whereKey($email->mail_account_id)->exists(), 404);
 
+        abort_if($email->archived_by_rule_id === null, 404);
+
         $email->update(['is_archived' => false, 'archived_by_rule_id' => null]);
 
         return back()->with('status', 'Moved back to the inbox.');

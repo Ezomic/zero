@@ -83,6 +83,7 @@ class GraphMailSyncService
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
         MutedThread::forgetMemo();
+        ArchiveRule::forgetMemo();
         SnoozedThreads::forgetMemo();
 
         try {

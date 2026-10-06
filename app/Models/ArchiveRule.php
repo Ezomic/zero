@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Archives new INBOX mail from a sender address or domain on arrival.
+ * Archives new INBOX mail from a sender address or exact domain on arrival.
  *
  * Archive is a local flag, so a rule never touches the mail server and
  * every message it files can be put back (ZERO-127).
@@ -66,7 +66,7 @@ class ArchiveRule extends Model
                 return $rule['id'];
             }
 
-            if ($rule['kind'] === self::DOMAIN && ($domain === $rule['value'] || str_ends_with($domain, '.'.$rule['value']))) {
+            if ($rule['kind'] === self::DOMAIN && $domain === $rule['value']) {
                 return $rule['id'];
             }
         }

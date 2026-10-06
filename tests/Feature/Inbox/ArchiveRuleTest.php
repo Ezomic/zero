@@ -100,13 +100,29 @@ class ArchiveRuleTest extends TestCase
         $this->assertSame($rule->id, $email->archived_by_rule_id);
     }
 
-    public function test_a_domain_rule_matches_its_subdomains(): void
+    public function test_a_domain_rule_matches_the_exact_domain(): void
+    {
+        $this->rule('domain', 'noisy.test');
+
+        $this->syncFrom('a@noisy.test');
+
+        $this->assertTrue(Email::where('uid', 'new-1')->sole()->is_archived);
+    }
+
+    public function test_a_domain_rule_does_not_match_a_subdomain(): void
     {
         $this->rule('domain', 'noisy.test');
 
         $this->syncFrom('a@mail.noisy.test');
 
-        $this->assertTrue(Email::where('uid', 'new-1')->sole()->is_archived);
+        $this->assertFalse(Email::where('uid', 'new-1')->sole()->is_archived);
+    }
+
+    public function test_undo_refuses_mail_no_rule_archived(): void
+    {
+        $email = Email::factory()->create(['mail_account_id' => $this->account->id, 'is_archived' => true]);
+
+        $this->actingAs($this->user)->post(route('archiveRules.undo', $email))->assertNotFound();
     }
 
     public function test_a_domain_rule_does_not_match_a_lookalike_domain(): void
