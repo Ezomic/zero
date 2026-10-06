@@ -47,6 +47,21 @@
                     <svg class="ic-sm"><use href="#i-trash"/></svg>Delete all
                 </button>
             </form>
+            @php $domain = substr((string) strrchr($address, '@'), 1); @endphp
+            <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;">
+                <form method="POST" action="{{ route('archiveRules.store') }}">
+                    @csrf
+                    <input type="hidden" name="kind" value="address">
+                    <input type="hidden" name="value" value="{{ $address }}">
+                    <button class="btn sm ghost"><svg class="ic-sm"><use href="#i-archive"/></svg>Always archive new mail from this sender</button>
+                </form>
+                <form method="POST" action="{{ route('archiveRules.store') }}">
+                    @csrf
+                    <input type="hidden" name="kind" value="domain">
+                    <input type="hidden" name="value" value="{{ $domain }}">
+                    <button class="btn sm ghost">Whole domain {{ $domain }}</button>
+                </form>
+            </div>
         @endif
     </div>
 

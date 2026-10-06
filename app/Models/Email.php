@@ -51,6 +51,7 @@ class Email extends Model
         'is_starred',
         'snoozed_until',
         'is_archived',
+        'archived_by_rule_id',
         'is_deleted',
         'has_attachments',
         'sent_at',

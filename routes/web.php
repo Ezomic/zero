@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ArchiveRuleController;
 use App\Http\Controllers\Auth\GoogleOAuthController;
 use App\Http\Controllers\Auth\MicrosoftOAuthController;
 use App\Http\Controllers\CalendarEventController;
@@ -64,6 +65,11 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/saved-searches/{savedSearch}', [SavedSearchController::class, 'update'])->name('savedSearches.update');
     Route::post('/saved-searches/{savedSearch}/move', [SavedSearchController::class, 'move'])->name('savedSearches.move');
     Route::delete('/saved-searches/{savedSearch}', [SavedSearchController::class, 'destroy'])->name('savedSearches.destroy');
+
+    Route::get('/archive-rules', [ArchiveRuleController::class, 'index'])->name('archiveRules.index');
+    Route::post('/archive-rules', [ArchiveRuleController::class, 'store'])->name('archiveRules.store');
+    Route::delete('/archive-rules/{rule}', [ArchiveRuleController::class, 'destroy'])->name('archiveRules.destroy');
+    Route::post('/archive-rules/undo/{email}', [ArchiveRuleController::class, 'undo'])->name('archiveRules.undo');
 
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');

@@ -91,6 +91,9 @@
         <a href="{{ route('attachments.index') }}" class="nav-item {{ request()->routeIs('attachments.index') ? 'active' : '' }}">
             <svg class="ic"><use href="#i-clip"/></svg>Attachments
         </a>
+        <a href="{{ route('archiveRules.index') }}" class="nav-item {{ request()->routeIs('archiveRules.index') ? 'active' : '' }}">
+            <svg class="ic"><use href="#i-archive"/></svg>Auto-archive
+        </a>
     </div>
 
     @if ($savedSearches->isNotEmpty())
