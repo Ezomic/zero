@@ -3,6 +3,7 @@
 namespace App\Services\Mail;
 
 use App\Events\NewEmailArrived;
+use App\Models\ArchiveRule;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
@@ -451,6 +452,8 @@ class GraphMailSyncService
         // silent, decided before the create and before the broadcast.
         $muted = MutedThread::isMuted((int) $account->id, $threadId);
 
+        $ruleId = $folderName === 'INBOX' && ! $muted ? ArchiveRule::matchFor($account, $fromAddress) : null;
+
         $email = Email::create([
             'mail_account_id' => $account->id,
             'ulid' => $ulid,
@@ -468,7 +471,8 @@ class GraphMailSyncService
             'body_text' => null,
             'is_read' => $isRead,
             'is_starred' => $isStarred,
-            'is_archived' => $muted,
+            'is_archived' => $muted || $ruleId !== null,
+            'archived_by_rule_id' => $ruleId,
             'has_attachments' => $message['hasAttachments'] ?? false,
             'sent_at' => $sentAt,
         ]);
@@ -484,7 +488,7 @@ class GraphMailSyncService
             SnoozedThreads::forget((int) $account->id, (string) $threadId);
         }
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
+        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted && $ruleId === null) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,

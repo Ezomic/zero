@@ -4,6 +4,7 @@ namespace App\Services\Mail;
 
 use App\Events\NewEmailArrived;
 use App\Exceptions\SyncBudgetExceededException;
+use App\Models\ArchiveRule;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
@@ -1144,6 +1145,8 @@ class ImapSyncService
         // would recognise (ZERO-119).
         $muted = MutedThread::isMuted((int) $account->id, $threadId);
 
+        $ruleId = $folderName === 'INBOX' && ! $muted ? ArchiveRule::matchFor($account, $fromAddress) : null;
+
         $email = Email::create([
             'mail_account_id' => $account->id,
             'ulid' => $ulid,
@@ -1165,7 +1168,8 @@ class ImapSyncService
             'body_text' => null,
             'is_read' => $isRead,
             'is_starred' => $isStarred,
-            'is_archived' => $muted,
+            'is_archived' => $muted || $ruleId !== null,
+            'archived_by_rule_id' => $ruleId,
             'has_attachments' => false,
             'sent_at' => $sentAt,
         ]);
@@ -1184,7 +1188,7 @@ class ImapSyncService
             SnoozedThreads::forget((int) $account->id, (string) $threadId);
         }
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted) {
+        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted && $ruleId === null) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,
