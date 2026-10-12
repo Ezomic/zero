@@ -8508,16 +8508,16 @@
         },
         {
             "name": "thijssensoftware/flare-client",
-            "version": "0.3.6",
+            "version": "0.3.8",
             "source": {
                 "type": "git",
                 "url": "git@github.com:Ezomic/flare-client.git",
-                "reference": "7532d0031572b2e047496d7a512d00580720c443"
+                "reference": "2c9424cc4a40698f215a51d454e5ff3d62e6d820"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/7532d0031572b2e047496d7a512d00580720c443",
-                "reference": "7532d0031572b2e047496d7a512d00580720c443",
+                "url": "https://api.github.com/repos/Ezomic/flare-client/zipball/2c9424cc4a40698f215a51d454e5ff3d62e6d820",
+                "reference": "2c9424cc4a40698f215a51d454e5ff3d62e6d820",
                 "shasum": ""
             },
             "require": {
@@ -8578,7 +8578,11 @@
                 "proprietary"
             ],
             "description": "Reports exceptions, failed jobs and failed scheduled tasks to flare.",
-            "time": "2026-09-29T12:22:53+00:00"
+            "support": {
+                "source": "https://github.com/Ezomic/flare-client/tree/0.3.8",
+                "issues": "https://github.com/Ezomic/flare-client/issues"
+            },
+            "time": "2026-10-11T17:40:07+00:00"
         },
         {
             "name": "thijssensoftware/id-client",
