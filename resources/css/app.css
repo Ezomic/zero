@@ -214,6 +214,21 @@ svg{ display:block; flex-shrink:0; }
 #kb-help.hidden{ display:none; }
 #new-email-toast{ display:flex; }
 #new-email-toast.hidden{ display:none; }
+.outgoing-stack{ position:fixed; left:16px; bottom:16px; z-index:60; display:flex; flex-direction:column; gap:8px; width:min(24rem, calc(100vw - 32px)); }
+.outgoing-stack:empty{ display:none; }
+.outgoing-item{ display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; border:1px solid var(--border);
+  background:var(--bg-1); box-shadow:var(--shadow); }
+.outgoing-item.is-failed{ border-color:var(--danger); }
+.outgoing-item.is-sent{ border-color:var(--success); }
+.outgoing-text{ min-width:0; flex:1; }
+.outgoing-title{ margin:0; font-size:13px; font-weight:700; }
+.outgoing-item.is-failed .outgoing-title{ color:var(--danger); }
+.outgoing-item.is-sent .outgoing-title{ color:var(--success); }
+.outgoing-sub{ margin:2px 0 0; font-size:12.5px; color:var(--text-dim); overflow-wrap:anywhere; }
+.outgoing-actions{ display:flex; flex-shrink:0; gap:6px; align-items:center; }
+@media (max-width:768px){
+  .outgoing-stack{ bottom:calc(76px + env(safe-area-inset-bottom)); }
+}
 .flash{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:14px; }
 .flash.success{ background:var(--success-soft); color:var(--success); }
 .flash.error{ background:var(--danger-soft); color:var(--danger); }

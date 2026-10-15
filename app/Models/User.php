@@ -43,6 +43,12 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
+    /** @return HasMany<OutgoingMessage, $this> */
+    public function outgoingMessages(): HasMany
+    {
+        return $this->hasMany(OutgoingMessage::class);
+    }
+
     /** @return HasMany<MailAccount, $this> */
     public function mailAccounts(): HasMany
     {

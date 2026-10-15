@@ -390,6 +390,8 @@
     @yield('scripts')
 
     @auth
+        <x-outgoing-status />
+
         <div id="new-email-toast" class="hidden card" style="position:fixed; bottom:16px; right:16px; z-index:50; max-width:22rem; box-shadow:var(--shadow); padding:14px; align-items:flex-start; gap:10px; cursor:pointer;" onclick="window.location.reload()">
             <div style="flex-shrink:0; width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:5px;"></div>
             <div style="min-width:0;">

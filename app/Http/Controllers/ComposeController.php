@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Mail\HoldOutgoingMessage;
 use App\Concerns\InteractsWithCurrentUser;
-use App\Models\Contact;
+use App\Http\Requests\SendMessageRequest;
 use App\Models\Draft;
 use App\Models\Email;
 use App\Models\MailAccount;
-use App\Services\Mail\MailSenderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -26,6 +26,7 @@ class ComposeController extends Controller
             $draft = Draft::where('user_id', auth()->id())->findOrFail($request->integer('draft'));
 
             $prefill = [
+                ...$this->emptyPrefill(),
                 'mail_account_id' => $draft->mail_account_id,
                 'to' => $draft->to_addresses,
                 'cc' => $draft->cc_addresses,
@@ -35,6 +36,10 @@ class ComposeController extends Controller
                 'references' => $draft->references_header,
                 'draft_id' => $draft->id,
             ];
+        }
+
+        if ($request->filled('restore')) {
+            $prefill = $this->prefillFromOutgoing($request->integer('restore'));
         }
 
         return view('inbox.compose', [
@@ -59,52 +64,54 @@ class ComposeController extends Controller
         return $this->prefillFromEmail($email, 'forward');
     }
 
-    public function store(Request $request, MailSenderService $sender): RedirectResponse
+    public function store(SendMessageRequest $request, HoldOutgoingMessage $hold): RedirectResponse
     {
-        $validated = $request->validate([
-            'mail_account_id' => ['required', $this->ownedAccountRule()],
-            'to' => ['required', 'string'], // comma-separated
-            'cc' => ['nullable', 'string'],
-            'subject' => ['required', 'string', 'max:255'],
-            'body' => ['required', 'string'],
-            'in_reply_to' => ['nullable', 'string'],
-            'references' => ['nullable', 'string'],
-            'draft_id' => ['nullable', 'integer'],
-            'attachments.*' => ['nullable', 'file', 'max:10240'],
-        ]);
+        $user = $this->currentUser();
+        $account = $user->mailAccounts()->findOrFail($request->integer('mail_account_id'));
 
-        $data = [];
+        $hold->handle(
+            user: $user,
+            account: $account,
+            fields: $request->fields(),
+            uploads: $request->uploads(),
+            restoredFrom: $request->restoredFrom(),
+            keep: $request->keptAttachments(),
+            draftId: $request->draftId(),
+        );
 
-        foreach (is_array($validated) ? $validated : [] as $key => $value) {
-            $data[(string) $key] = $value;
+        return redirect()->route('inbox.index');
+    }
+
+    /**
+     * The composer as it was when the message was taken back or failed. The
+     * files cannot be put back into a file input, so they are listed with a
+     * checkbox each and carried over server-side when the form is sent.
+     *
+     * @return array<string, mixed>
+     */
+    protected function prefillFromOutgoing(int $id): array
+    {
+        $message = $this->currentUser()->outgoingMessages()->findOrFail($id);
+
+        abort_unless($message->canBeReopened(), 404);
+
+        if ($message->acknowledged_at === null) {
+            $message->forceFill(['acknowledged_at' => now()])->save();
         }
 
-        /** @var MailAccount $account */
-        $account = MailAccount::findOrFail($data['mail_account_id']);
-        abort_unless($account->user_id === auth()->id(), 403);
-
-        $toAddresses = $this->splitAddresses($request->string('to')->toString());
-        $ccAddresses = $this->splitAddresses($request->string('cc')->toString());
-
-        $sender->send($account, [
-            'to' => $toAddresses,
-            'cc' => $ccAddresses,
-            'subject' => $request->string('subject')->toString(),
-            'html' => nl2br(e($request->string('body')->toString())),
-            'in_reply_to' => $request->string('in_reply_to')->toString() ?: null,
-            'references' => $request->string('references')->toString() ?: null,
-            'attachments' => array_values(array_filter($request->file('attachments', []))),
-        ]);
-
-        foreach ([...$toAddresses, ...$ccAddresses] as $address) {
-            Contact::remember(auth()->id(), $address);
-        }
-
-        if (! empty($data['draft_id'])) {
-            Draft::where('user_id', auth()->id())->where('id', $data['draft_id'])->delete();
-        }
-
-        return redirect()->route('inbox.index')->with('status', 'Email sent.');
+        return [
+            ...$this->emptyPrefill(),
+            'mail_account_id' => $message->mail_account_id,
+            'to' => implode(', ', $message->to_addresses),
+            'cc' => implode(', ', $message->cc_addresses),
+            'subject' => $message->subject,
+            'body' => $message->body,
+            'in_reply_to' => $message->in_reply_to,
+            'references' => $message->references_header,
+            'draft_id' => $message->draft_id,
+            'restore_id' => $message->id,
+            'attachments' => $message->attachments,
+        ];
     }
 
     protected function prefillFromEmail(Email $email, string $mode): View
@@ -213,16 +220,8 @@ class ComposeController extends Controller
             'in_reply_to' => null,
             'references' => null,
             'draft_id' => null,
+            'restore_id' => null,
+            'attachments' => [],
         ];
-    }
-
-    /** @return array<int, string> */
-    protected function splitAddresses(string $raw): array
-    {
-        return collect(explode(',', $raw))
-            ->map(fn ($a) => trim($a))
-            ->filter()
-            ->values()
-            ->all();
     }
 }
