@@ -33,7 +33,7 @@
             </p>
             <p style="margin:0; font-size:12.5px; color:var(--text-dim);">
                 Only inbox mail the rule would still change is counted, newest first{{ $window->oldest ? ', back to '.$window->oldest->format('j M Y') : '' }}.
-                Nothing is deleted.
+                Nothing is deleted. Only this rule is applied: the rules above it and any stop setting are not considered.
                 @if ($window->nextBefore !== null) Older mail is checked in the next stretch.@endif
             </p>
         @endif

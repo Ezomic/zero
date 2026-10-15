@@ -83,6 +83,13 @@ return new class extends Migration
                 ]);
             });
 
+        // The old table cannot hold every kind of rule, so mail archived by one
+        // that was dropped must not point at an id that now means another rule.
+        DB::table('emails')
+            ->whereNotNull('archived_by_rule_id')
+            ->whereNotIn('archived_by_rule_id', DB::table('archive_rules')->select('id'))
+            ->update(['archived_by_rule_id' => null]);
+
         Schema::dropIfExists('mail_rules');
     }
 };

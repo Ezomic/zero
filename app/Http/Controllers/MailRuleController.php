@@ -67,10 +67,16 @@ class MailRuleController extends Controller
         ]);
 
         $validator->after(function (ValidationValidator $validator) use ($request): void {
-            $value = RuleMatcher::clean($request->string('value')->toString());
+            $value = mb_strtolower(RuleMatcher::clean($request->string('value')->toString()));
 
             if ($value === '') {
                 $validator->errors()->add('value', 'Enter something to match.');
+            }
+
+            // Lowercasing can lengthen a string (a dotted capital I becomes two
+            // characters), so the stored form is checked, not just the typed one.
+            if (mb_strlen($value) > MailRule::MAX_PATTERN) {
+                $validator->errors()->add('value', 'That is too long.');
             }
 
             if ($request->string('field')->toString() === MailRule::SUBJECT && $request->string('operator')->toString() === MailRule::DOMAIN) {
@@ -89,12 +95,16 @@ class MailRuleController extends Controller
 
             $folder = $request->string('folder')->toString();
 
-            $exists = MailFolder::query()
+            $accountFolders = MailFolder::query()
                 ->where('mail_account_id', $request->integer('mail_account_id'))
-                ->where('local_name', $folder)
-                ->exists();
+                ->get(['local_name'])
+                ->map(fn (MailFolder $row): string => $row->local_name)
+                ->all();
 
-            if (! $exists || in_array(strtoupper($folder), MailRule::UNFILEABLE, true)) {
+            // Compared exactly: a database collation that ignores case would let
+            // "WORK" through for a folder called "Work", and the rule would then
+            // never fire because the sync matches names exactly.
+            if (! in_array($folder, $accountFolders, true) || in_array(strtoupper($folder), MailRule::UNFILEABLE, true)) {
                 $validator->errors()->add('folder', 'Pick a folder on that account.');
             }
         });
@@ -114,15 +124,16 @@ class MailRuleController extends Controller
             return back()->withInput()->with('error', 'That is not a domain.');
         }
 
-        MailRule::create([
+        MailRule::firstOrCreate([
             'user_id' => $user->id,
             'mail_account_id' => $request->filled('mail_account_id') ? $request->integer('mail_account_id') : null,
-            'position' => (MailRule::where('user_id', $user->id)->orderByDesc('position')->first()->position ?? 0) + 1,
             'field' => $field,
             'operator' => $operator,
             'value' => $value,
             'action' => $action,
             'folder' => $action === MailRule::FILE ? $request->string('folder')->toString() : null,
+        ], [
+            'position' => (MailRule::where('user_id', $user->id)->orderByDesc('position')->first()->position ?? 0) + 1,
             'stop_on_match' => $request->boolean('stop_on_match'),
         ]);
 
@@ -197,7 +208,7 @@ class MailRuleController extends Controller
     {
         abort_unless($this->currentUser()->mailAccounts()->whereKey($email->mail_account_id)->exists(), 404);
 
-        abort_if($email->archived_by_rule_id === null, 404);
+        abort_if($email->archived_by_rule_id === null || $email->is_deleted || $email->folder !== 'INBOX', 404);
 
         $email->update(['is_archived' => false, 'archived_by_rule_id' => null]);
 

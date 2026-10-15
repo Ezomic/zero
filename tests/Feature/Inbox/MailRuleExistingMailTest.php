@@ -99,6 +99,22 @@ class MailRuleExistingMailTest extends TestCase
         $this->assertTrue($trashed->fresh()?->is_deleted);
     }
 
+    public function test_mail_already_archived_by_hand_is_left_alone_by_every_action(): void
+    {
+        MailFolder::create(['mail_account_id' => $this->account->id, 'local_name' => 'Shops', 'remote_path' => 'Shops']);
+        $parked = $this->mail('a@noisy.test', ['is_archived' => true, 'uid' => '55']);
+
+        foreach ([['star', []], ['mark_read', []], ['file', ['mail_account_id' => $this->account->id, 'folder' => 'Shops']]] as [$action, $extra]) {
+            app(ApplyRuleToExistingMail::class)->apply($this->rule('noisy', $action, $extra), null);
+        }
+
+        $parked->refresh();
+        $this->assertSame('INBOX', $parked->folder);
+        $this->assertFalse($parked->is_starred);
+        $this->assertFalse($parked->is_read);
+        $this->assertDatabaseCount('pending_mirror_actions', 0);
+    }
+
     public function test_apply_is_idempotent(): void
     {
         $rule = $this->rule('noisy', 'star');

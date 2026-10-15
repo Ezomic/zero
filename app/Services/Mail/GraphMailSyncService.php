@@ -500,7 +500,7 @@ class GraphMailSyncService
             app(ApplyRuleOutcome::class)->handle($email, $ruled, wasStarred: $isStarred, wasRead: $isRead);
         }
 
-        if ($folderName === 'INBOX' && ! $isRead && ! $ruled->markRead && $broadcastNew && ! $muted && ! $ruled->keepsOutOfSight()) {
+        if ($folderName === 'INBOX' && ! $isRead && ! $ruled->markRead && $broadcastNew && ! $muted && $ruled->archivedByRuleId === null && $email->folder === $folderName) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,

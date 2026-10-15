@@ -18,28 +18,36 @@ use Throwable;
  */
 final class RuleMatcher
 {
+    /** An exact-subject rule can never match a subject longer than a pattern can be, so longer ones are not trimmed or folded. */
+    private const MAX_SUBJECT_FOR_EXACT = MailRule::MAX_PATTERN * 8;
+
     /**
      * Case-insensitive in the Unicode sense, and indifferent to whether an
      * accent arrived composed or as a base letter plus a combining mark.
-     * Invalid UTF-8 in a header is scrubbed rather than thrown on.
+     * Invalid UTF-8 in a header is scrubbed rather than thrown on, and
+     * invisible format characters (zero-width spaces, soft hyphens, direction
+     * marks) are dropped from both sides, so neither a pasted stray one nor a
+     * sender's padding changes what matches.
      */
     public static function fold(string $text): string
     {
-        $text = mb_scrub($text, 'UTF-8');
+        $text = preg_replace('/\p{Cf}+/u', '', mb_scrub($text, 'UTF-8')) ?? '';
         $composed = Normalizer::normalize($text, Normalizer::FORM_C);
+        $folded = mb_convert_case(is_string($composed) ? $composed : $text, MB_CASE_FOLD, 'UTF-8');
+        $recomposed = Normalizer::normalize($folded, Normalizer::FORM_C);
 
-        return mb_convert_case(is_string($composed) ? $composed : $text, MB_CASE_FOLD, 'UTF-8');
+        return is_string($recomposed) ? $recomposed : $folded;
     }
 
     /**
-     * Trims ordinary whitespace and the Unicode space separators (a pasted
-     * no-break space, for one). Only ever run on a rule's own pattern, which
-     * is capped, so the two-sided pattern cannot be made to backtrack on
-     * mail content.
+     * Trims ordinary whitespace, the Unicode space separators (a pasted
+     * no-break space, for one) and invisible format characters. Only run on
+     * text of bounded length, so the two-sided pattern cannot be made to
+     * backtrack on mail content.
      */
     public static function clean(string $text): string
     {
-        $trimmed = preg_replace('/^[\s\p{Z}\p{Cc}]+|[\s\p{Z}\p{Cc}]+$/u', '', mb_scrub($text, 'UTF-8'));
+        $trimmed = preg_replace('/^[\s\p{Z}\p{Cc}\p{Cf}]+|[\s\p{Z}\p{Cc}\p{Cf}]+$/u', '', mb_scrub($text, 'UTF-8'));
 
         return $trimmed ?? '';
     }
@@ -127,7 +135,7 @@ final class RuleMatcher
         $address = self::fold(trim((string) $facts->fromAddress));
 
         if ($operator === MailRule::CONTAINS) {
-            return str_contains(self::fold((string) $facts->fromName).' '.$address, $pattern);
+            return str_contains(self::fold((string) $facts->fromName)."\x1F".$address, $pattern);
         }
 
         return self::matchesAddress($operator, $pattern, $address);
@@ -157,7 +165,7 @@ final class RuleMatcher
     {
         return match ($operator) {
             MailRule::CONTAINS => str_contains(self::fold($subject), $pattern),
-            MailRule::IS => self::fold(trim($subject)) === $pattern,
+            MailRule::IS => strlen($subject) <= self::MAX_SUBJECT_FOR_EXACT && self::fold(self::clean($subject)) === $pattern,
             default => false,
         };
     }

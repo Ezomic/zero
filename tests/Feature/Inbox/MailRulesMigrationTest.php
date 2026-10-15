@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Inbox;
 
+use App\Models\Email;
+use App\Models\MailAccount;
 use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,5 +61,23 @@ class MailRulesMigrationTest extends TestCase
 
         $this->assertSame([1], DB::table('archive_rules')->pluck('id')->map(fn (mixed $id): int => (int) (is_numeric($id) ? $id : 0))->all());
         $this->assertSame('domain', DB::table('archive_rules')->value('kind'));
+    }
+
+    public function test_rolling_back_clears_references_to_rules_the_old_table_cannot_hold(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $now = now();
+        DB::table('mail_rules')->insert([
+            ['id' => 1, 'user_id' => $user->id, 'position' => 1, 'field' => 'from', 'operator' => 'domain', 'value' => 'noisy.test', 'action' => 'archive', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 2, 'user_id' => $user->id, 'position' => 2, 'field' => 'subject', 'operator' => 'contains', 'value' => 'x', 'action' => 'archive', 'created_at' => $now, 'updated_at' => $now],
+        ]);
+        $kept = Email::factory()->create(['mail_account_id' => $account->id, 'archived_by_rule_id' => 1]);
+        $dropped = Email::factory()->create(['mail_account_id' => $account->id, 'archived_by_rule_id' => 2]);
+
+        $this->migration()->down();
+
+        $this->assertSame(1, $kept->fresh()?->archived_by_rule_id);
+        $this->assertNull($dropped->fresh()?->archived_by_rule_id);
     }
 }

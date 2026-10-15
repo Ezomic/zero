@@ -60,7 +60,7 @@ class ApplyRuleToExistingMail
         $matches = $window->filter(fn (Email $email): bool => RuleMatcher::matches($rule, $this->factsFor($email)))->values();
 
         if ($apply) {
-            $this->actOn($rule, $matches);
+            $this->actOn($rule, $accountIds, $matches);
         }
 
         $lastId = $window->last()?->id;
@@ -120,8 +120,8 @@ class ApplyRuleToExistingMail
             ->whereIn('mail_account_id', $accountIds)
             ->where('folder', 'INBOX')
             ->where('is_deleted', false)
+            ->where('is_archived', false)
             ->when($before !== null, fn (Builder $query) => $query->where('id', '<', $before))
-            ->when($rule->action === MailRule::ARCHIVE, fn (Builder $query) => $query->where('is_archived', false))
             ->when($rule->action === MailRule::STAR, fn (Builder $query) => $query->where('is_starred', false))
             ->when($rule->action === MailRule::MARK_READ, fn (Builder $query) => $query->where('is_read', false))
             ->when($rule->action === MailRule::FILE, fn (Builder $query) => $query->whereNotNull('uid')->where('uid', '!=', ''))
@@ -143,8 +143,11 @@ class ApplyRuleToExistingMail
         return new MessageFacts($email->from_address, $email->from_name, $recipients, (string) $email->subject);
     }
 
-    /** @param Collection<int, Email> $matches */
-    protected function actOn(MailRule $rule, $matches): void
+    /**
+     * @param  list<int>  $accountIds
+     * @param  Collection<int, Email>  $matches
+     */
+    protected function actOn(MailRule $rule, array $accountIds, Collection $matches): void
     {
         $outcome = new RuleOutcome(
             archivedByRuleId: $rule->action === MailRule::ARCHIVE ? $rule->id : null,
@@ -154,26 +157,31 @@ class ApplyRuleToExistingMail
             matchedRuleIds: [$rule->id],
         );
 
-        DB::transaction(function () use ($matches, $outcome): void {
-            foreach ($matches as $email) {
-                $wasStarred = $email->is_starred;
-                $wasRead = $email->is_read;
+        try {
+            DB::transaction(function () use ($rule, $accountIds, $matches, $outcome): void {
+                // Read again inside the transaction: a second click on Apply, or a
+                // sync, may have dealt with some of these already, and a stale row
+                // would queue a second move for a uid that has already left.
+                $current = $this->candidates($rule, $accountIds, null)->whereKey($matches->pluck('id')->all())->get();
 
-                $email->update(array_filter([
-                    'is_archived' => $outcome->archivedByRuleId !== null ? true : null,
-                    'archived_by_rule_id' => $outcome->archivedByRuleId,
-                    'is_starred' => $outcome->star ? true : null,
-                    'is_read' => $outcome->markRead ? true : null,
-                ], fn (mixed $value): bool => $value !== null));
+                foreach ($current as $email) {
+                    $wasStarred = $email->is_starred;
+                    $wasRead = $email->is_read;
 
-                $this->applyOutcome->handle($email, $outcome, $wasStarred, $wasRead);
+                    $email->update(array_filter([
+                        'is_archived' => $outcome->archivedByRuleId !== null ? true : null,
+                        'archived_by_rule_id' => $outcome->archivedByRuleId,
+                        'is_starred' => $outcome->star ? true : null,
+                        'is_read' => $outcome->markRead ? true : null,
+                    ], fn (mixed $value): bool => $value !== null));
+
+                    $this->applyOutcome->handle($email, $outcome, $wasStarred, $wasRead);
+                }
+            });
+        } finally {
+            foreach (MailAccount::query()->whereIn('id', $accountIds)->get() as $account) {
+                ApplyRuleOutcome::dispatchQueued($account);
             }
-        });
-
-        $account = MailAccount::query()->whereIn('id', $matches->pluck('mail_account_id')->unique())->get();
-
-        foreach ($account as $mailAccount) {
-            ApplyRuleOutcome::dispatchQueued($mailAccount);
         }
     }
 }
