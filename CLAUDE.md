@@ -244,6 +244,37 @@ Deliberate behaviour worth knowing:
 - Detection matches on mime *or* extension, since plenty of senders attach a
   bare `invite.ics` as `application/octet-stream`.
 
+### Mail rules
+
+`MailRule` (`mail_rules`, page at `/mail-rules`) files, archives, stars or marks
+read new INBOX mail as it is stored, in both sync paths (ZERO-118, generalising
+the archive-only rules of ZERO-127).
+
+- A rule looks at the sender, the recipients (To and Cc) or the subject, and
+  matches by plain case-insensitive text: `contains`, `is` (whole address or
+  subject) or `domain` (exact sender domain). Never a regex, so a pattern cannot
+  be slow and a stray bracket cannot break a rule. Patterns are capped at 255
+  characters; folding is Unicode-aware and indifferent to composed or
+  decomposed accents.
+- Rules run in `position` order (ties by id) and every matching rule applies.
+  `file` can only happen once, so the first rule naming a folder wins. A rule
+  with `stop_on_match` ends the run.
+- Rules apply on first arrival in INBOX only. A row that already exists returns
+  from `storeMessage()` before rules are consulted, so a message the user
+  unarchived or moved by hand is never touched again. Muted threads skip rules.
+- Archive is local, as manual archive is. Star, mark read and file go through
+  `PendingMirrorAction` exactly like the manual ones, recorded by
+  `ApplyRuleOutcome` with one drain dispatched per run (not per message).
+- No action deletes. `file` cannot target INBOX, SENT, DRAFTS or TRASH, and the
+  folder must exist on the rule's account (a file rule needs one account). A
+  rule whose folder disappears is skipped, not failed.
+- The rule set is loaded once per run (`MailRule::forgetMemo()` at the start of
+  `sync()`), as with the contact memo. One failing rule is logged and skipped.
+- "Apply to existing mail" (`ApplyRuleToExistingMail`) works in bounded
+  stretches of 1000 candidate INBOX messages, newest first, with a preview count
+  before the apply and a cursor (`before`) to continue. Only mail the rule would
+  still change is a candidate, so running it twice does nothing the second time.
+
 ### Events
 
 **`NewEmailArrived`** (`app/Events/NewEmailArrived.php`)

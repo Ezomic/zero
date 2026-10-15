@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\ArchiveRuleController;
 use App\Http\Controllers\Auth\GoogleOAuthController;
 use App\Http\Controllers\Auth\MicrosoftOAuthController;
 use App\Http\Controllers\CalendarEventController;
@@ -10,6 +9,7 @@ use App\Http\Controllers\DraftController;
 use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
+use App\Http\Controllers\MailRuleController;
 use App\Http\Controllers\SavedSearchController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SenderController;
@@ -66,10 +66,14 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/saved-searches/{savedSearch}/move', [SavedSearchController::class, 'move'])->name('savedSearches.move');
     Route::delete('/saved-searches/{savedSearch}', [SavedSearchController::class, 'destroy'])->name('savedSearches.destroy');
 
-    Route::get('/archive-rules', [ArchiveRuleController::class, 'index'])->name('archiveRules.index');
-    Route::post('/archive-rules', [ArchiveRuleController::class, 'store'])->name('archiveRules.store');
-    Route::delete('/archive-rules/{rule}', [ArchiveRuleController::class, 'destroy'])->name('archiveRules.destroy');
-    Route::post('/archive-rules/undo/{email}', [ArchiveRuleController::class, 'undo'])->name('archiveRules.undo');
+    Route::redirect('/archive-rules', '/mail-rules');
+    Route::get('/mail-rules', [MailRuleController::class, 'index'])->name('mailRules.index');
+    Route::post('/mail-rules', [MailRuleController::class, 'store'])->name('mailRules.store');
+    Route::post('/mail-rules/{rule}/move', [MailRuleController::class, 'move'])->name('mailRules.move');
+    Route::delete('/mail-rules/{rule}', [MailRuleController::class, 'destroy'])->name('mailRules.destroy');
+    Route::get('/mail-rules/{rule}/apply', [MailRuleController::class, 'preview'])->name('mailRules.preview');
+    Route::post('/mail-rules/{rule}/apply', [MailRuleController::class, 'apply'])->name('mailRules.apply');
+    Route::post('/mail-rules/undo/{email}', [MailRuleController::class, 'undo'])->name('mailRules.undo');
 
     Route::get('/sender', [SenderController::class, 'show'])->name('sender.show');
     Route::post('/sender/bulk', [SenderController::class, 'bulk'])->name('sender.bulk');

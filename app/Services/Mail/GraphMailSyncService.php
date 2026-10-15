@@ -2,14 +2,17 @@
 
 namespace App\Services\Mail;
 
+use App\Actions\Mail\ApplyRuleOutcome;
 use App\Events\NewEmailArrived;
-use App\Models\ArchiveRule;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MailRule;
 use App\Models\MutedThread;
+use App\Support\MailRules\MessageFacts;
+use App\Support\MailRules\RuleOutcome;
 use App\Support\Payload;
 use App\Support\SearchableBody;
 use App\Support\SnoozedThreads;
@@ -83,7 +86,7 @@ class GraphMailSyncService
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
         MutedThread::forgetMemo();
-        ArchiveRule::forgetMemo();
+        MailRule::forgetMemo();
         SnoozedThreads::forgetMemo();
 
         try {
@@ -112,6 +115,8 @@ class GraphMailSyncService
                 'sync_error' => $e->getMessage(),
             ]);
             throw $e;
+        } finally {
+            ApplyRuleOutcome::dispatchQueued($account);
         }
     }
 
@@ -453,7 +458,9 @@ class GraphMailSyncService
         // silent, decided before the create and before the broadcast.
         $muted = MutedThread::isMuted((int) $account->id, $threadId);
 
-        $ruleId = $folderName === 'INBOX' && ! $muted ? ArchiveRule::matchFor($account, $fromAddress) : null;
+        $ruled = $folderName === 'INBOX' && ! $muted
+            ? MailRule::outcomeFor($account, new MessageFacts($fromAddress, $fromName, array_merge($toAddresses, $ccAddresses), $subject))
+            : new RuleOutcome;
 
         $email = Email::create([
             'mail_account_id' => $account->id,
@@ -470,10 +477,10 @@ class GraphMailSyncService
             'cc_addresses' => $ccAddresses,
             'body_html' => null,
             'body_text' => null,
-            'is_read' => $isRead,
-            'is_starred' => $isStarred,
-            'is_archived' => $muted || $ruleId !== null,
-            'archived_by_rule_id' => $ruleId,
+            'is_read' => $isRead || $ruled->markRead,
+            'is_starred' => $isStarred || $ruled->star,
+            'is_archived' => $muted || $ruled->archivedByRuleId !== null,
+            'archived_by_rule_id' => $ruled->archivedByRuleId,
             'has_attachments' => $message['hasAttachments'] ?? false,
             'sent_at' => $sentAt,
         ]);
@@ -489,7 +496,11 @@ class GraphMailSyncService
             SnoozedThreads::forget((int) $account->id, (string) $threadId);
         }
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted && $ruleId === null) {
+        if (! $ruled->isEmpty()) {
+            app(ApplyRuleOutcome::class)->handle($email, $ruled, wasStarred: $isStarred, wasRead: $isRead);
+        }
+
+        if ($folderName === 'INBOX' && ! $isRead && ! $ruled->markRead && $broadcastNew && ! $muted && ! $ruled->keepsOutOfSight()) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,
