@@ -3,10 +3,11 @@
 namespace App\Services\Mail;
 
 use App\Models\MailAccount;
-use Illuminate\Http\UploadedFile;
+use App\Support\MailAttachment;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
 use Webklex\PHPIMAP\Client;
@@ -28,7 +29,7 @@ class MailSenderService
     ) {}
 
     /**
-     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: list<MailAttachment>}  $message
      */
     public function send(MailAccount $account, array $message): void
     {
@@ -40,7 +41,7 @@ class MailSenderService
     }
 
     /**
-     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: list<MailAttachment>}  $message
      */
     protected function sendViaGmailApi(MailAccount $account, array $message): void
     {
@@ -60,7 +61,7 @@ class MailSenderService
     }
 
     /**
-     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: list<MailAttachment>}  $message
      */
     protected function sendViaGraphApi(MailAccount $account, array $message): void
     {
@@ -81,11 +82,11 @@ class MailSenderService
         }
 
         $attachments = collect($message['attachments'] ?? [])
-            ->map(fn (UploadedFile $file) => [
+            ->map(fn (MailAttachment $file) => [
                 '@odata.type' => '#microsoft.graph.fileAttachment',
-                'name' => $file->getClientOriginalName(),
-                'contentType' => $file->getMimeType(),
-                'contentBytes' => base64_encode((string) $file->get()),
+                'name' => $file->name,
+                'contentType' => $file->mimeType,
+                'contentBytes' => base64_encode($file->contents),
             ])
             ->all();
 
@@ -110,15 +111,12 @@ class MailSenderService
     }
 
     /**
-     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: list<MailAttachment>}  $message
      */
     protected function sendViaSmtp(MailAccount $account, array $message): void
     {
-        $transport = Transport::fromDsn($this->smtpDsn($account));
-        $mailer = new Mailer($transport);
-
         $mime = $this->buildMimeMessage($account, $message);
-        $mailer->send($mime);
+        $this->makeMailer($account)->send($mime);
 
         $this->appendToSentFolder($account, $mime->toString());
     }
@@ -174,13 +172,18 @@ class MailSenderService
         }
     }
 
+    protected function makeMailer(MailAccount $account): MailerInterface
+    {
+        return new Mailer(Transport::fromDsn($this->smtpDsn($account)));
+    }
+
     protected function makeImapClient(MailAccount $account): Client
     {
         return $this->clientFactory->make($account);
     }
 
     /**
-     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: UploadedFile[]}  $message
+     * @param  array{to: string[], cc?: string[], subject: string, html: string, in_reply_to?: ?string, references?: ?string, attachments?: list<MailAttachment>}  $message
      */
     protected function buildMimeMessage(MailAccount $account, array $message): Email
     {
@@ -206,9 +209,8 @@ class MailSenderService
             }
         }
 
-        /** @var UploadedFile $file */
         foreach ($message['attachments'] ?? [] as $file) {
-            $email->attach((string) $file->get(), $file->getClientOriginalName(), $file->getMimeType());
+            $email->attach($file->contents, $file->name, $file->mimeType);
         }
 
         return $email;

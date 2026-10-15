@@ -75,7 +75,11 @@ Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
 | `GET /api/new-emails` | `inbox.newEmails` | Polled by live inbox for new rows |
 | `GET /triage` | `triage.index` | Triage view (skip/move/delete one at a time) |
 | `GET /compose` | `compose.create` | Compose new message |
-| `POST /compose` | `compose.store` | Send + write to IMAP Sent folder |
+| `POST /compose` | `compose.store` | Holds the message (Undo Send), then the queue sends it and writes to the IMAP Sent folder |
+| `GET /compose?restore={id}` | `compose.create` | Reopen a taken-back or failed message with its attachments |
+| `GET /outgoing` | `outgoing.index` | JSON status of the user's held, sending, just-sent and failed messages (the status strip polls it) |
+| `POST /outgoing/{id}/undo` | `outgoing.undo` | Take a held message back; 409 once the hold has passed |
+| `DELETE /outgoing/{id}` | `outgoing.dismiss` | Discard a failed or taken-back message and its attachments |
 | `GET /drafts` | `drafts.index` | Draft list |
 | `POST /drafts` | `drafts.autosave` | Auto-save draft from compose |
 | `GET /contacts/search` | `contacts.search` | Autocomplete for To/CC fields |
@@ -104,6 +108,7 @@ Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
 | `Contact` | `user_id`, `email`, `name` | Auto-populated from every From/To/CC seen during sync. Powers compose autocomplete. |
 | `Draft` | `mail_account_id`, `data` (JSON) | Autosaved from the compose view. |
 | `PendingMirrorAction` | `mail_account_id`, `email_id`, `action`, `remote_folder_path`, `uid`, `attempts`, `failed_at` | One local action still waiting to reach the mail server. Rows are deleted on confirmation, so anything left is outstanding — this is what the accounts page counts and what `DrainMirrorActionsJob` batches. |
+| `OutgoingMessage` | `status`, `send_at`, `attachments` (JSON), `error` | A sent message in its hold: `held` -> `sending` -> `sent` / `failed`, or `held` -> `cancelled`. See Undo Send below. |
 | `EmailAttachment` | `email_id`, `storage_path` | Written on first body fetch if the message has attachments. |
 
 ### Services
@@ -212,6 +217,36 @@ to zero's entry in `Ezomic/infra` `ansible/group_vars/all/apps.yml` and the
 Refuses Outlook accounts (Graph has no IDLE equivalent) and inactive ones;
 locally, re-running for an account that already has a plist is a no-op.
 `mail:idle:deprovision {account}` is the counterpart.
+
+### Undo Send (ZERO-117)
+
+`ComposeController::store()` no longer sends. `HoldOutgoingMessage` writes an
+`outgoing_messages` row and queues `SendOutgoingMessageJob` with a delay of
+`OUTGOING_HOLD_SECONDS` (default 10, capped at 120; 0 means no hold and no
+undo). The status strip in the layout shows the countdown, Undo, the sent
+confirmation and any failure on every page.
+
+- **The row decides, not the job.** Queued jobs cannot be reliably deleted, so
+  undo only flips the row (`held` -> `cancelled`, one conditional UPDATE) and
+  the job claims it (`held` -> `sending`, another conditional UPDATE) before
+  sending. Exactly one of them wins, a retried or duplicated job claims
+  nothing, and nothing retries once the claim is won: a retry after a send the
+  server already accepted would deliver twice.
+- **Attachments** live on the private `outgoing` disk (`storage/app/outgoing/{id}/`,
+  no URL serves it) under generated names; the display name is sanitised and
+  kept in the row. They are deleted on send, on dismiss, when the reopened
+  composer takes them over, and by the sweep: taken-back and failed messages
+  keep theirs for `outgoing.restore_ttl_hours` (24) so the composer can be
+  reopened, and directories no row needs are removed.
+- **Failures surface**: any exception is stored on the row and shown as a
+  persistent "Not sent" card with Reopen and Dismiss. A worker killed mid-send
+  leaves `sending`, which the sweep turns into a failure that says delivery is
+  unconfirmed, rather than sending again.
+- **`outgoing:sweep`** runs every minute: re-queues a held message whose job
+  went missing, fails stuck ones, purges expired rows and orphan files.
+- The `sync` queue driver cannot hold a message; it needs a real worker.
+- Needs a queue worker on the default queue. Sends wait behind whatever the
+  workers are doing, so a long sync can delay one.
 
 ### Calendar invitations
 
