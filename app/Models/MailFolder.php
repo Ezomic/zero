@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
+/**
+ * @property int $mail_account_id
+ * @property string $local_name
+ */
 class MailFolder extends Model
 {
     /** Canonical folders that always get a friendly, fixed label. */
