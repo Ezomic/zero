@@ -73,6 +73,12 @@ class ApplyRuleOutcome
 
         unset(static::$accountsToDrain[(int) $account->id]);
 
-        DrainMirrorActionsJob::dispatch($account);
+        // The rows are already recorded, so a failed dispatch only delays the
+        // drain until the next one. It must not replace the sync's own outcome.
+        try {
+            DrainMirrorActionsJob::dispatch($account);
+        } catch (Throwable $e) {
+            Log::warning("Could not schedule the mirror drain for account {$account->id}: ".$e->getMessage());
+        }
     }
 }

@@ -62,6 +62,32 @@ class MailRuleMatcherTest extends TestCase
         }
     }
 
+    public function test_a_pattern_of_only_invisible_characters_never_matches(): void
+    {
+        foreach (["\u{200B}", "\u{200B}\u{FEFF}", "\u{200E}", "\u{00AD}", " \u{2060} "] as $value) {
+            $this->assertFalse(RuleMatcher::matches($this->rule(['field' => 'subject', 'value' => $value]), $this->facts(subject: "Hi\u{200B}there")), json_encode($value) ?: '');
+        }
+    }
+
+    public function test_invisible_characters_on_either_side_do_not_change_a_match(): void
+    {
+        $this->assertTrue(RuleMatcher::matches($this->rule(['field' => 'subject', 'value' => "invoice\u{200E}"]), $this->facts(subject: 'Invoice 12')));
+        $this->assertTrue(RuleMatcher::matches($this->rule(['field' => 'subject', 'value' => 'viagra']), $this->facts(subject: "V\u{200B}IAG\u{00AD}RA now")));
+    }
+
+    public function test_an_exact_subject_ignores_surrounding_no_break_spaces(): void
+    {
+        $rule = $this->rule(['field' => 'subject', 'operator' => 'is', 'value' => 'hello']);
+
+        $this->assertTrue(RuleMatcher::matches($rule, $this->facts(subject: "\u{00A0}Hello\u{00A0}")));
+        $this->assertFalse(RuleMatcher::matches($rule, $this->facts(subject: str_repeat('a', 5000))));
+    }
+
+    public function test_a_sender_pattern_does_not_match_across_the_name_and_address_join(): void
+    {
+        $this->assertFalse(RuleMatcher::matches($this->rule(['value' => 'n a@']), $this->facts('a@b.test', name: 'N')));
+    }
+
     public function test_a_huge_pattern_matches_nothing_and_does_not_hang(): void
     {
         $rule = $this->rule(['field' => 'subject', 'value' => str_repeat('a', 100_000)]);

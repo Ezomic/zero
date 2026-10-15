@@ -87,9 +87,18 @@ class MailRule extends Model
      * storeMessage() asks once per message, and a query per message in the
      * sync hot path is the amplification ZERO-107 removed.
      *
+     * It is also reloaded once it is a minute old. A sync can run for half an
+     * hour in a different process from the page that edits rules, and a rule
+     * deleted meanwhile must stop acting without waiting for the run to end.
+     *
      * @var array<int, list<self>>
      */
     protected static array $memoByAccount = [];
+
+    /** @var array<int, int> */
+    protected static array $memoLoadedAt = [];
+
+    protected const MEMO_SECONDS = 60;
 
     protected static function booted(): void
     {
@@ -102,6 +111,7 @@ class MailRule extends Model
     public static function forgetMemo(): void
     {
         static::$memoByAccount = [];
+        static::$memoLoadedAt = [];
     }
 
     public static function outcomeFor(MailAccount $account, MessageFacts $facts): RuleOutcome
@@ -120,7 +130,7 @@ class MailRule extends Model
     {
         $accountId = (int) $account->id;
 
-        if (isset(static::$memoByAccount[$accountId])) {
+        if (isset(static::$memoByAccount[$accountId]) && now()->getTimestamp() - (static::$memoLoadedAt[$accountId] ?? 0) < self::MEMO_SECONDS) {
             return static::$memoByAccount[$accountId];
         }
 
@@ -136,6 +146,8 @@ class MailRule extends Model
         $folders = $rules->contains(fn (self $rule): bool => $rule->action === self::FILE)
             ? MailFolder::query()->where('mail_account_id', $accountId)->get(['local_name'])->map(fn (MailFolder $folder): string => $folder->local_name)->all()
             : [];
+
+        static::$memoLoadedAt[$accountId] = now()->getTimestamp();
 
         return static::$memoByAccount[$accountId] = array_values(
             $rules->filter(fn (self $rule): bool => $rule->action !== self::FILE || static::canFileInto($rule->folder, $folders))->all()

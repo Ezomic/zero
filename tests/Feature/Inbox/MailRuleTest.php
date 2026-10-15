@@ -552,6 +552,73 @@ class MailRuleTest extends TestCase
         $this->assertDatabaseHas('mail_rules', ['operator' => 'domain', 'value' => 'noisy.test', 'position' => 2, 'user_id' => $this->user->id]);
     }
 
+    public function test_a_pattern_that_grows_when_lowercased_is_rejected_not_truncated(): void
+    {
+        $this->store(['field' => 'subject', 'operator' => 'contains', 'value' => str_repeat("\u{0130}", 255), 'action' => 'archive'])
+            ->assertSessionHasErrors('value');
+
+        $this->assertDatabaseCount('mail_rules', 0);
+    }
+
+    public function test_an_invisible_only_pattern_is_rejected(): void
+    {
+        $this->store(['field' => 'subject', 'operator' => 'contains', 'value' => "\u{200B}\u{FEFF}", 'action' => 'archive'])
+            ->assertSessionHasErrors('value');
+    }
+
+    public function test_saving_the_same_rule_twice_keeps_one(): void
+    {
+        $data = ['field' => 'from', 'operator' => 'is', 'value' => 'a@noisy.test', 'action' => 'archive'];
+
+        $this->store($data);
+        $this->store([...$data, 'value' => 'A@Noisy.test']);
+
+        $this->assertDatabaseCount('mail_rules', 1);
+    }
+
+    public function test_a_folder_must_be_named_exactly_as_it_is(): void
+    {
+        $this->folder('Work');
+
+        $this->store(['field' => 'from', 'operator' => 'contains', 'value' => 'x', 'action' => 'file', 'folder' => 'WORK', 'mail_account_id' => $this->account->id])
+            ->assertSessionHasErrors('folder');
+    }
+
+    public function test_undo_refuses_mail_that_has_since_been_deleted_or_moved(): void
+    {
+        $rule = $this->rule('contains', 'x');
+        $deleted = Email::factory()->create(['mail_account_id' => $this->account->id, 'is_archived' => true, 'archived_by_rule_id' => $rule->id, 'is_deleted' => true]);
+        $moved = Email::factory()->create(['mail_account_id' => $this->account->id, 'is_archived' => true, 'archived_by_rule_id' => $rule->id, 'folder' => 'TRASH']);
+
+        $this->actingAs($this->user)->post(route('mailRules.undo', $deleted))->assertNotFound();
+        $this->actingAs($this->user)->post(route('mailRules.undo', $moved))->assertNotFound();
+    }
+
+    public function test_a_rule_deleted_mid_run_stops_acting_once_the_memo_is_a_minute_old(): void
+    {
+        $rule = $this->rule('contains', 'noisy');
+        $this->syncMessages([$this->graphMessage('first', 'a@noisy.test')]);
+        $this->assertTrue($this->synced('first')->is_archived);
+
+        DB::table('mail_rules')->where('id', $rule->id)->delete();
+        $this->travel(2)->minutes();
+        $this->syncMessages([$this->graphMessage('second', 'a@noisy.test')]);
+
+        $this->assertFalse($this->synced('second')->is_archived);
+    }
+
+    public function test_a_filed_message_that_could_not_be_moved_still_notifies(): void
+    {
+        Event::fake([NewEmailArrived::class]);
+        $this->folder('Shops');
+        $this->rule('contains', 'shop', $this->account->id, ['action' => 'file', 'folder' => 'Shops']);
+
+        $this->syncMessages([$this->graphMessage('', 'a@shop.test', ['internetMessageId' => '<no-uid@example.com>'])]);
+
+        $this->assertSame('INBOX', Email::where('message_id', '<no-uid@example.com>')->sole()->folder);
+        Event::assertDispatched(NewEmailArrived::class);
+    }
+
     public function test_regex_like_input_is_stored_as_literal_text(): void
     {
         $this->store(['field' => 'subject', 'operator' => 'contains', 'value' => '(a+)+$', 'action' => 'archive'])

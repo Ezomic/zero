@@ -22,10 +22,4 @@ final readonly class RuleOutcome
     {
         return $this->matchedRuleIds === [];
     }
-
-    /** True when the message leaves the inbox view on arrival, so a new-mail toast would be wrong. */
-    public function keepsOutOfSight(): bool
-    {
-        return $this->archivedByRuleId !== null || $this->folder !== null;
-    }
 }
