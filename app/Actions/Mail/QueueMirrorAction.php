@@ -21,10 +21,22 @@ class QueueMirrorAction
      */
     public function handle(Email $email, string $action, ?string $sourceUid = null): void
     {
+        if ($this->record($email, $action, $sourceUid)) {
+            DrainMirrorActionsJob::dispatch($email->requireMailAccount());
+        }
+    }
+
+    /**
+     * Records the action without nudging the drain, for callers that queue
+     * many and dispatch once at the end. Returns false when the message has no
+     * remote uid to act on, in which case nothing was recorded.
+     */
+    public function record(Email $email, string $action, ?string $sourceUid = null): bool
+    {
         $uid = $sourceUid ?? $email->uid;
 
         if ($uid === null || $uid === '') {
-            return;
+            return false;
         }
 
         PendingMirrorAction::create([
@@ -35,6 +47,6 @@ class QueueMirrorAction
             'uid' => $uid,
         ]);
 
-        DrainMirrorActionsJob::dispatch($email->requireMailAccount());
+        return true;
     }
 }

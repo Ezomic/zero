@@ -2,16 +2,19 @@
 
 namespace App\Services\Mail;
 
+use App\Actions\Mail\ApplyRuleOutcome;
 use App\Events\NewEmailArrived;
 use App\Exceptions\SyncBudgetExceededException;
-use App\Models\ArchiveRule;
 use App\Models\Contact;
 use App\Models\Email;
 use App\Models\EmailAttachment;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MailRule;
 use App\Models\MutedThread;
 use App\Models\PendingMirrorAction;
+use App\Support\MailRules\MessageFacts;
+use App\Support\MailRules\RuleOutcome;
 use App\Support\MimeHeader;
 use App\Support\SearchableBody;
 use App\Support\SnoozedThreads;
@@ -172,7 +175,7 @@ class ImapSyncService
         // carry one entry per address it has ever seen (ZERO-107).
         Contact::forgetHandledThisRun();
         MutedThread::forgetMemo();
-        ArchiveRule::forgetMemo();
+        MailRule::forgetMemo();
         SnoozedThreads::forgetMemo();
 
         $capturingImapTraffic = $this->beginImapTrafficCapture($account);
@@ -244,6 +247,8 @@ class ImapSyncService
             ]);
             throw $e;
         } finally {
+            ApplyRuleOutcome::dispatchQueued($account);
+
             if ($capturingImapTraffic) {
                 ob_end_flush();
             }
@@ -1146,7 +1151,11 @@ class ImapSyncService
         // would recognise (ZERO-119).
         $muted = MutedThread::isMuted((int) $account->id, $threadId);
 
-        $ruleId = $folderName === 'INBOX' && ! $muted ? ArchiveRule::matchFor($account, $fromAddress) : null;
+        // Rules decide on first arrival only: a row that already exists returned
+        // above, so whatever the user later does to a message is never undone.
+        $ruled = $folderName === 'INBOX' && ! $muted
+            ? MailRule::outcomeFor($account, new MessageFacts($fromAddress, $fromName, array_merge($toAddresses, $ccAddresses), $subject))
+            : new RuleOutcome;
 
         $email = Email::create([
             'mail_account_id' => $account->id,
@@ -1167,10 +1176,10 @@ class ImapSyncService
             'cc_addresses' => $ccAddresses,
             'body_html' => null,
             'body_text' => null,
-            'is_read' => $isRead,
-            'is_starred' => $isStarred,
-            'is_archived' => $muted || $ruleId !== null,
-            'archived_by_rule_id' => $ruleId,
+            'is_read' => $isRead || $ruled->markRead,
+            'is_starred' => $isStarred || $ruled->star,
+            'is_archived' => $muted || $ruled->archivedByRuleId !== null,
+            'archived_by_rule_id' => $ruled->archivedByRuleId,
             'has_attachments' => false,
             'sent_at' => $sentAt,
         ]);
@@ -1189,7 +1198,11 @@ class ImapSyncService
             SnoozedThreads::forget((int) $account->id, (string) $threadId);
         }
 
-        if ($folderName === 'INBOX' && ! $isRead && $broadcastNew && ! $muted && $ruleId === null) {
+        if (! $ruled->isEmpty()) {
+            app(ApplyRuleOutcome::class)->handle($email, $ruled, wasStarred: $isStarred, wasRead: $isRead);
+        }
+
+        if ($folderName === 'INBOX' && ! $isRead && ! $ruled->markRead && $broadcastNew && ! $muted && ! $ruled->keepsOutOfSight()) {
             broadcast(new NewEmailArrived(
                 userId: $account->user_id,
                 emailId: $email->id,
