@@ -11,6 +11,9 @@
             <input type="hidden" name="draft_id" id="draft_id" value="{{ $prefill['draft_id'] }}">
             <input type="hidden" name="in_reply_to" id="in_reply_to" value="{{ $prefill['in_reply_to'] }}">
             <input type="hidden" name="references" id="references" value="{{ $prefill['references'] }}">
+            @if ($prefill['restore_id'])
+                <input type="hidden" name="restore_id" value="{{ $prefill['restore_id'] }}">
+            @endif
 
             <div class="composer-head">
                 <span class="title">New message</span>
@@ -51,6 +54,19 @@
                         <svg class="ic-sm"><use href="#i-clip"/></svg>Attach files
                         <input type="file" name="attachments[]" id="attachment-input" multiple style="position:absolute; width:1px; height:1px; overflow:hidden; opacity:0;">
                     </label>
+                    @if (count($prefill['attachments']) > 0)
+                        <ul class="attach-list" style="margin-top:8px;" id="kept-attachments">
+                            @foreach ($prefill['attachments'] as $position => $kept)
+                                <li>
+                                    <label style="display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer;">
+                                        <input type="checkbox" name="keep_attachments[]" value="{{ $position }}" checked>
+                                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:16rem;">{{ $kept['name'] }}</span>
+                                    </label>
+                                    <span style="color:var(--text-faint); flex-shrink:0;">{{ Number::fileSize($kept['size']) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
                     <ul id="attachment-list" class="attach-list" style="margin-top:8px;"></ul>
                 </div>
             </div>
@@ -69,6 +85,14 @@
         (function () {
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
             const form = document.getElementById('compose-form');
+
+            form.addEventListener('submit', () => {
+                form.querySelectorAll('button.primary').forEach((button) => { button.disabled = true; });
+            });
+
+            window.addEventListener('pageshow', () => {
+                form.querySelectorAll('button.primary').forEach((button) => { button.disabled = false; });
+            });
             const draftIdField = document.getElementById('draft_id');
             const statusEl = document.getElementById('draft-status');
 

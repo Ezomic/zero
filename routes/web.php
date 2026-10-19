@@ -10,6 +10,7 @@ use App\Http\Controllers\DraftController;
 use App\Http\Controllers\EmailAttachmentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MailAccountController;
+use App\Http\Controllers\OutgoingMessageController;
 use App\Http\Controllers\SavedSearchController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SenderController;
@@ -89,6 +90,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/compose', [ComposeController::class, 'create'])->name('compose.create');
     Route::post('/compose', [ComposeController::class, 'store'])->name('compose.store');
+
+    Route::get('/outgoing', [OutgoingMessageController::class, 'index'])->name('outgoing.index');
+    Route::post('/outgoing/{outgoing}/undo', [OutgoingMessageController::class, 'undo'])->whereNumber('outgoing')->name('outgoing.undo');
+    Route::delete('/outgoing/{outgoing}', [OutgoingMessageController::class, 'dismiss'])->whereNumber('outgoing')->name('outgoing.dismiss');
 
     Route::get('/drafts', [DraftController::class, 'index'])->name('drafts.index');
     Route::post('/drafts', [DraftController::class, 'autosave'])->name('drafts.autosave');

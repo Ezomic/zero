@@ -15,7 +15,6 @@ parameters:
 
     ignoreErrors:
         - identifier: missingType.generics
-        - identifier: arrayFilter.same
         - message: '#Access to an undefined property Laravel\\Socialite\\Contracts\\User::\$(refreshToken|token)#'
         - message: '#Using nullsafe method call on non-nullable type Webklex\\PHPIMAP\\Attribute#'
         - message: '#Expression on left side of \?\? is not nullable#'

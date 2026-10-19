@@ -35,3 +35,9 @@ Schedule::command('mail:backfill-bodies')->everyFifteenMinutes()->withoutOverlap
 // selects on the same condition it clears, a missed run catches up on
 // everything due rather than skipping it.
 Schedule::command('mail:wake-snoozed')->everyFiveMinutes()->withoutOverlapping();
+
+// Under Undo Send (ZERO-117): re-queues a held message whose job went missing,
+// fails one stuck mid-send because its worker died, and purges the private
+// attachment files of anything expired or orphaned. Every minute because the
+// first of those is the difference between a message going late and never.
+Schedule::command('outgoing:sweep')->everyMinute()->withoutOverlapping();
