@@ -5,6 +5,7 @@ namespace Tests\Feature\Inbox;
 use App\Models\Email;
 use App\Models\MailAccount;
 use App\Models\User;
+use App\Support\AppTimezone;
 use App\Support\SnoozePresets;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -127,6 +128,8 @@ class SnoozeTest extends TestCase
 
     public function test_the_sweep_clears_expired_snoozes_and_is_idempotent(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 10:00', AppTimezone::name()));
+
         $due = $this->email();
         $notDue = $this->email();
 
@@ -142,6 +145,25 @@ class SnoozeTest extends TestCase
 
         // Running it again finds nothing rather than doing something twice.
         $this->artisan('mail:wake-snoozed')->expectsOutput('Nothing due.')->assertSuccessful();
+    }
+
+    public function test_next_week_on_a_sunday_is_the_very_next_day(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-11 10:00', AppTimezone::name()));
+
+        $email = $this->email();
+        $this->snooze($email, ['preset' => SnoozePresets::NEXT_WEEK]);
+
+        $this->assertEquals(
+            CarbonImmutable::parse('2026-10-12 08:00', AppTimezone::name()),
+            $email->fresh()?->snoozed_until,
+        );
+
+        $this->travel(2)->days();
+
+        $this->artisan('mail:wake-snoozed')->assertSuccessful();
+
+        $this->assertNull($email->fresh()?->snoozed_until);
     }
 
     /**
