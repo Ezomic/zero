@@ -84,6 +84,11 @@ Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
 | `POST /drafts` | `drafts.autosave` | Auto-save draft from compose |
 | `GET /contacts/search` | `contacts.search` | Autocomplete for To/CC fields |
 
+### API (bearer token, no session, no CSRF)
+| Route | Name | Notes |
+|---|---|---|
+| `POST /api/outbound` | `outbound.store` | JSON `{to, subject, text}`, `Authorization: Bearer zob_...`. 202 once queued as an `OutgoingMessage`; 401 for any bad token (identical body), 422 invalid, 429 over the limit. See Outbound API below. |
+
 ### Accounts
 | Route | Name | Notes |
 |---|---|---|
@@ -109,6 +114,7 @@ Plist files live in `~/Library/LaunchAgents/`. Logs in `~/Library/Logs/` as
 | `Draft` | `mail_account_id`, `data` (JSON) | Autosaved from the compose view. |
 | `PendingMirrorAction` | `mail_account_id`, `email_id`, `action`, `remote_folder_path`, `uid`, `attempts`, `failed_at` | One local action still waiting to reach the mail server. Rows are deleted on confirmation, so anything left is outstanding — this is what the accounts page counts and what `DrainMirrorActionsJob` batches. |
 | `OutgoingMessage` | `status`, `send_at`, `attachments` (JSON), `error` | A sent message in its hold: `held` -> `sending` -> `sent` / `failed`, or `held` -> `cancelled`. See Undo Send below. |
+| `OutboundToken` | `name`, `token_hash`, `mail_account_id`, `revoked_at` | A credential for another app to send through `POST /api/outbound`. Only the sha256 of the token is stored. Bound to one account; the account's owner owns what it sends. |
 | `EmailAttachment` | `email_id`, `storage_path` | Written on first body fetch if the message has attachments. |
 
 ### Services
@@ -247,6 +253,43 @@ confirmation and any failure on every page.
 - The `sync` queue driver cannot hold a message; it needs a real worker.
 - Needs a queue worker on the default queue. Sends wait behind whatever the
   workers are doing, so a long sync can delay one.
+
+### Outbound API (ZERO-131)
+
+Other apps (first: filebox password reset) send mail through zero so mail
+credentials live only here. `routes/api.php` is registered in `bootstrap/app.php`,
+so the route has no session and no CSRF, and `RedirectIfNotSecure` (web group
+only) does not apply: TLS is the proxy's job.
+
+- **Tokens** are made on the box with artisan, never in a UI:
+  `outbound:token-create {name} --account=ID` prints `zob_...` once,
+  `outbound:token-rotate {name}` replaces the secret, `outbound:token-revoke {name}`
+  ends it. A token whose account is missing or inactive is refused like any
+  other bad token.
+- **Sender** is always the token's account (Gmail API, Graph or SMTP by
+  provider). The body never chooses it: `from`, `account`, `cc` and any other key
+  are ignored. Exactly one recipient, a bare ASCII address with a dotted domain (no
+  display name, IP literal or `%`); no line breaks in
+  subject or recipient; subject 200 and text 5000 characters; text is escaped
+  and line breaks become `<br>` (the composer's own rendering).
+- **Limits** live in `AuthenticateOutboundToken`: 30 requests a minute per IP
+  (counted before the token is checked, so failed guesses cost the same) and 20
+  an hour per token. Over either is 429. Accepted sends log `outbound.accepted`
+  (token name, recipient, id, never the body or token); a failed one logs
+  `outbound.failed`, since there is no status strip to show it.
+- **It is an `OutgoingMessage`** with `via_api` true (and `outbound_token_id`,
+  which is nulled if the account and token are deleted, hence the separate
+  flag), `send_at` now and no job delay, so the existing job, claim and sweep
+  carry it and there is no Undo hold. `User::outgoingMessages()` excludes
+  `via_api` rows, so they never reach the status strip, undo, dismiss or
+  reopen, and delivery skips `Contact::remember`.
+- **Revocation holds for queued mail too**: delivery refuses a `via_api` message
+  whose token is revoked or whose account is inactive by then. If queueing
+  fails the row is deleted, so a 500 never leaves mail the sweep would send
+  later. A failed API message has its text blanked, since nothing reopens it.
+  Like all sends there is no retry once the claim is won (a retry could deliver
+  twice); a failure is recorded on the row and logged.
+- No idempotency key: two identical requests send two mails.
 
 ### Calendar invitations
 
