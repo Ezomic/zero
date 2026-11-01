@@ -31,4 +31,10 @@ return [
     // mid-send. Whether it was delivered is unknowable, so it is marked failed
     // with that said, instead of being sent again.
     'stale_sending_minutes' => 10,
+
+    // POST /api/outbound (ZERO-131). The IP count includes failed
+    // authentication, so guessing tokens is throttled too.
+    'api_token_per_hour' => 20,
+
+    'api_ip_per_minute' => 30,
 ];

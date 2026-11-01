@@ -43,10 +43,17 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
-    /** @return HasMany<OutgoingMessage, $this> */
+    /**
+     * The messages this user composed. Ones sent through the API (ZERO-131)
+     * belong to the account's owner too but were never composed, so they are
+     * left out of everything that reads through here: the status strip, undo,
+     * dismiss and reopen.
+     *
+     * @return HasMany<OutgoingMessage, $this>
+     */
     public function outgoingMessages(): HasMany
     {
-        return $this->hasMany(OutgoingMessage::class);
+        return $this->hasMany(OutgoingMessage::class)->where('via_api', false);
     }
 
     /** @return HasMany<MailAccount, $this> */

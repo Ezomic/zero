@@ -27,6 +27,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property ?string $references_header
  * @property list<array{path: string, name: string, mime: string, size: int}> $attachments
  * @property ?int $draft_id
+ * @property bool $via_api
+ * @property ?int $outbound_token_id
  * @property ?string $error
  * @property ?CarbonImmutable $dispatched_at
  * @property ?CarbonImmutable $sending_at
@@ -49,6 +51,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'attachments',
     'draft_id',
     'dispatched_at',
+    'via_api',
+    'outbound_token_id',
 ])]
 class OutgoingMessage extends Model
 {
@@ -66,6 +70,7 @@ class OutgoingMessage extends Model
     protected function casts(): array
     {
         return [
+            'via_api' => 'boolean',
             'send_at' => 'immutable_datetime',
             'to_addresses' => 'array',
             'cc_addresses' => 'array',

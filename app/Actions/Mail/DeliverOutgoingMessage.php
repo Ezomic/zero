@@ -5,10 +5,13 @@ namespace App\Actions\Mail;
 use App\Models\Contact;
 use App\Models\Draft;
 use App\Models\MailAccount;
+use App\Models\OutboundToken;
 use App\Models\OutgoingMessage;
 use App\Services\Mail\MailSenderService;
 use App\Support\MailAttachment;
 use App\Support\OutgoingConfig;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -86,6 +89,10 @@ class DeliverOutgoingMessage
             throw new RuntimeException('The sending account was removed before this message could go out.');
         }
 
+        if ($message->via_api) {
+            $this->assertApiSenderStillAllowed($message, $account);
+        }
+
         $this->sender->send($account, [
             'to' => $message->to_addresses,
             'cc' => $message->cc_addresses,
@@ -95,6 +102,19 @@ class DeliverOutgoingMessage
             'references' => $message->references_header,
             'attachments' => $this->attachments($message),
         ]);
+    }
+
+    /**
+     * A message accepted before its token was revoked, or its account
+     * deactivated, must not go out after that (ZERO-131).
+     */
+    protected function assertApiSenderStillAllowed(OutgoingMessage $message, MailAccount $account): void
+    {
+        $token = $message->outbound_token_id === null ? null : OutboundToken::find($message->outbound_token_id);
+
+        if ($token === null || $token->isRevoked() || ! $account->is_active) {
+            throw new RuntimeException('The API token was revoked or its account deactivated before this message could go out.');
+        }
     }
 
     /** @return list<MailAttachment> */
@@ -119,11 +139,13 @@ class DeliverOutgoingMessage
         // The mail is out. Nothing below may turn that into a reported failure;
         // what it leaves behind, the sweep removes.
         try {
-            foreach ([...$message->to_addresses, ...$message->cc_addresses] as $recipient) {
-                Contact::remember($message->user_id, Address::create($recipient)->getAddress());
-            }
+            if (! $message->via_api) {
+                foreach ([...$message->to_addresses, ...$message->cc_addresses] as $recipient) {
+                    Contact::remember($message->user_id, Address::create($recipient)->getAddress());
+                }
 
-            Contact::forgetHandledThisRun();
+                Contact::forgetHandledThisRun();
+            }
 
             if ($message->draft_id !== null) {
                 Draft::where('user_id', $message->user_id)->where('id', $message->draft_id)->delete();
@@ -137,7 +159,7 @@ class DeliverOutgoingMessage
 
     protected function fail(OutgoingMessage $message, string $reason): void
     {
-        OutgoingMessage::query()
+        $failed = OutgoingMessage::query()
             ->whereKey($message->id)
             ->where('status', OutgoingMessage::SENDING)
             ->update([
@@ -145,6 +167,19 @@ class DeliverOutgoingMessage
                 'failed_at' => now(),
                 'updated_at' => now(),
                 'error' => Str::limit($reason, self::ERROR_LENGTH),
+                // Nothing reopens an API message, so keep no copy of its text
+                // (a reset link) once it has failed.
+                'body' => DB::raw($message->via_api ? "''" : 'body'),
             ]);
+
+        // A composed message that fails is a card in the user's status strip.
+        // An API one has no strip, so the log is where the failure shows.
+        if ($failed === 1 && $message->via_api) {
+            Log::warning('outbound.failed', [
+                'token' => OutboundToken::find($message->outbound_token_id)?->name,
+                'message_id' => $message->id,
+                'error' => Str::limit($reason, self::ERROR_LENGTH),
+            ]);
+        }
     }
 }
