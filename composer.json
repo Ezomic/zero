@@ -14,7 +14,7 @@
         "laravel/reverb": "^1.10",
         "laravel/socialite": "^5.28",
         "laravel/tinker": "^3.0",
-        "php": "^8.3",
+        "php": "^8.4",
         "sabre/vobject": "^5.0",
         "socialiteproviders/microsoft-graph": "^4.1",
         "thijssensoftware/flare-client": "^0.3.4",
