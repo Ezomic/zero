@@ -1361,10 +1361,27 @@ class ImapSyncService
 
     protected function notifyMacOs(string $from, string $subject): void
     {
-        $from = str_replace('"', '\\"', $from);
-        $subject = str_replace('"', '\\"', $subject);
-        $script = "display notification \"{$subject}\" with title \"New mail\" subtitle \"{$from}\" sound name \"Ping\"";
-        exec('osascript -e '.escapeshellarg($script).' > /dev/null 2>&1 &');
+        exec('osascript -e '.escapeshellarg($this->macOsNotificationScript($from, $subject)).' > /dev/null 2>&1 &');
+    }
+
+    protected function macOsNotificationScript(string $from, string $subject): string
+    {
+        return 'display notification '.$this->appleScriptString($subject)
+            .' with title "New mail" subtitle '.$this->appleScriptString($from)
+            .' sound name "Ping"';
+    }
+
+    /**
+     * Subject and sender come from whoever sent the mail (ZERO-134). Inside an
+     * AppleScript string literal only backslash and double quote are special, so
+     * escaping both (backslash first) keeps the value data. Control characters
+     * are dropped so a line break cannot end the statement.
+     */
+    private function appleScriptString(string $value): string
+    {
+        $value = (string) preg_replace('/[\x00-\x1F\x7F]/', '', $value);
+
+        return '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
     }
 
     protected function buildClient(MailAccount $account): Client
