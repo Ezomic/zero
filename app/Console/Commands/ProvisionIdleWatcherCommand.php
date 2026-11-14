@@ -27,10 +27,12 @@ class ProvisionIdleWatcherCommand extends Command
      */
     public function handle(): int
     {
-        $account = MailAccount::find($this->argument('account'));
+        $id = $this->argument('account');
+        assert(is_string($id) || is_int($id));
+        $account = MailAccount::find($id);
 
         if (! $account) {
-            $this->error("Account {$this->argument('account')} does not exist.");
+            $this->error("Account {$id} does not exist.");
 
             return self::FAILURE;
         }

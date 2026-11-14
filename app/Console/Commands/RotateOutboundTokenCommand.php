@@ -13,7 +13,9 @@ class RotateOutboundTokenCommand extends Command
 
     public function handle(): int
     {
-        $token = OutboundToken::where('name', (string) $this->argument('name'))->first();
+        $name = $this->argument('name');
+        assert(is_string($name));
+        $token = OutboundToken::where('name', $name)->first();
 
         if ($token === null || $token->isRevoked()) {
             $this->components->error('No active token with that name. A revoked token cannot be rotated; create a new one.');
