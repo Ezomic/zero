@@ -13,7 +13,9 @@ class RevokeOutboundTokenCommand extends Command
 
     public function handle(): int
     {
-        $token = OutboundToken::where('name', (string) $this->argument('name'))->first();
+        $name = $this->argument('name');
+        assert(is_string($name));
+        $token = OutboundToken::where('name', $name)->first();
 
         if ($token === null) {
             $this->components->error('No token with that name.');

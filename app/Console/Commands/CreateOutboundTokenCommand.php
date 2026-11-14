@@ -14,7 +14,8 @@ class CreateOutboundTokenCommand extends Command
 
     public function handle(): int
     {
-        $name = (string) $this->argument('name');
+        $name = $this->argument('name');
+        assert(is_string($name));
         $account = MailAccount::find((int) $this->option('account'));
 
         if ($account === null || ! $account->is_active) {

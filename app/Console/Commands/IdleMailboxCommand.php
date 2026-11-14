@@ -22,10 +22,12 @@ class IdleMailboxCommand extends Command
             return self::SUCCESS;
         }
 
-        $account = MailAccount::find($this->argument('account'));
+        $id = $this->argument('account');
+        assert(is_string($id) || is_int($id));
+        $account = MailAccount::find($id);
 
         if (! $account) {
-            $this->info("Account {$this->argument('account')} no longer exists — exiting.");
+            $this->info("Account {$id} no longer exists — exiting.");
 
             return self::SUCCESS;
         }

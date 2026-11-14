@@ -19,6 +19,8 @@ class DeprovisionIdleWatcherCommand extends Command
     public function handle(): int
     {
         $id = $this->argument('id');
+        assert(is_string($id) || is_int($id));
+        $id = (string) $id;
 
         if (PHP_OS_FAMILY === 'Darwin') {
             return $this->deprovisionLocal($id);
