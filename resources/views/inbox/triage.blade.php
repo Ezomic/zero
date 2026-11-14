@@ -59,7 +59,17 @@
                 <div class="triage-subject">{{ $email->subject }}</div>
 
                 <div class="triage-preview">
-                    {!! $email->body_html ?: nl2br(e($email->body_text ?: '(no preview available)')) !!}
+                    @if ($email->body_html)
+                        <iframe
+                            srcdoc="{{ $email->body_html }}"
+                            sandbox="allow-same-origin"
+                            referrerpolicy="no-referrer"
+                            style="width:100%; border:none; min-height:120px;"
+                            onload="this.style.height = (this.contentDocument.documentElement.scrollHeight + 16) + 'px'"
+                        ></iframe>
+                    @else
+                        {!! nl2br(e($email->body_text ?: '(no preview available)')) !!}
+                    @endif
                 </div>
 
                 <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
