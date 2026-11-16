@@ -19,6 +19,7 @@ class SendLoginCode
         $user->forceFill([
             'login_code_hash' => Hash::make($code),
             'login_code_expires_at' => CarbonImmutable::now()->addMinutes(10),
+            'login_code_attempts' => 0,
         ])->save();
 
         Mail::to($user->email)->send(new LoginCodeMail($code));

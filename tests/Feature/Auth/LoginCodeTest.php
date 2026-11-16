@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Actions\Auth\SendLoginCode;
+use App\Actions\Auth\VerifyLoginCode;
 use App\Mail\LoginCodeMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -134,6 +136,84 @@ class LoginCodeTest extends TestCase
 
         $response->assertSessionHasErrors('code');
         $this->assertGuest();
+    }
+
+    private function issueCode(User $user): string
+    {
+        Mail::fake();
+        app(SendLoginCode::class)->handle($user);
+
+        $sentCode = '';
+        Mail::assertSent(LoginCodeMail::class, function (LoginCodeMail $mail) use (&$sentCode) {
+            $sentCode = $mail->code;
+
+            return true;
+        });
+
+        return $sentCode;
+    }
+
+    private function wrongCode(string $code): string
+    {
+        return $code === '000000' ? '111111' : '000000';
+    }
+
+    public function test_a_code_is_wiped_after_five_failed_attempts(): void
+    {
+        $user = User::factory()->create();
+        $code = $this->issueCode($user);
+        $verify = app(VerifyLoginCode::class);
+
+        for ($i = 0; $i < VerifyLoginCode::MAX_ATTEMPTS; $i++) {
+            $this->assertFalse($verify->handle($user, $this->wrongCode($code)));
+        }
+
+        $this->assertFalse($verify->handle($user, $code));
+        $this->assertNull($user->refresh()->login_code_hash);
+    }
+
+    public function test_the_right_code_still_works_after_fewer_than_five_misses(): void
+    {
+        $user = User::factory()->create();
+        $code = $this->issueCode($user);
+        $verify = app(VerifyLoginCode::class);
+
+        for ($i = 0; $i < VerifyLoginCode::MAX_ATTEMPTS - 1; $i++) {
+            $verify->handle($user, $this->wrongCode($code));
+        }
+
+        $this->assertTrue($verify->handle($user, $code));
+    }
+
+    public function test_a_new_code_starts_with_a_fresh_attempt_count(): void
+    {
+        $user = User::factory()->create();
+        $first = $this->issueCode($user);
+        $verify = app(VerifyLoginCode::class);
+
+        for ($i = 0; $i < VerifyLoginCode::MAX_ATTEMPTS; $i++) {
+            $verify->handle($user, $this->wrongCode($first));
+        }
+
+        $second = $this->issueCode($user);
+
+        $this->assertSame(0, $user->refresh()->login_code_attempts);
+        $this->assertTrue($verify->handle($user, $second));
+    }
+
+    public function test_guesses_for_one_email_are_throttled_across_ips(): void
+    {
+        $user = User::factory()->create();
+
+        for ($i = 1; $i <= 5; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->post('/login/code/verify', ['email' => $user->email, 'code' => '000000'])
+                ->assertSessionHasErrors('code');
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.99'])
+            ->post('/login/code/verify', ['email' => strtoupper($user->email), 'code' => '000000'])
+            ->assertTooManyRequests();
     }
 
     public function test_verifying_a_wrong_code_fails(): void

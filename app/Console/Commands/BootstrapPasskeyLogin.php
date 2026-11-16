@@ -28,6 +28,7 @@ class BootstrapPasskeyLogin extends Command
         $user->forceFill([
             'login_code_hash' => Hash::make($code),
             'login_code_expires_at' => CarbonImmutable::now()->addMinutes(10),
+            'login_code_attempts' => 0,
         ])->save();
 
         $this->info("Login code for {$user->email}: {$code}");
